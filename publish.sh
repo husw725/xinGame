@@ -32,6 +32,9 @@ echo "✓ 通过"
 echo "--- 数值平衡校验 ---"
 node balance_sim.js  > /dev/null || { echo "✗ balance_sim.js 未通过，已中止发布"; exit 1; }
 echo "✓ 通过"
+echo "--- 技能/智力/速度加成平衡校验 ---"
+node skill_check.js > /dev/null || { echo "✗ skill_check.js 未通过：新机制打穿了等级墙"; exit 1; }
+echo "✓ 通过"
 echo "--- 谜题可解性校验 ---"
 node puzzle_check.js > /dev/null || { echo "✗ puzzle_check.js 未通过，已中止发布"; exit 1; }
 echo "✓ 通过"

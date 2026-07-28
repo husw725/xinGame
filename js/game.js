@@ -2,6 +2,14 @@
 const W = 480, H = 854;
 const FONT = '"PingFang SC","Microsoft YaHei",sans-serif';
 
+// 答题速度加成（毫秒）：只奖励不惩罚，慢慢答仍是原伤害
+const SPEED_TIERS = [
+  { ms: 2000, mult: 1.5, color: 0x4fc14f, label: '×1.5' },
+  { ms: 3000, mult: 1.2, color: 0xf4c542, label: '×1.2' },
+];
+const SPEED_BASE = { mult: 1.0, color: 0x7a7a88, label: '×1.0' };
+function speedTier(ms) { return SPEED_TIERS.find(t => ms <= t.ms) || SPEED_BASE; }
+
 // ============ 全局状态 ============
 function defaultState() {
   return {
@@ -41,6 +49,21 @@ function sumGear(prop) { return gearList().reduce((s, g) => s + (g[prop] || 0), 
 function totalAtk() { return GS.p.atk + sumGear('atk'); }
 function totalDef() { return sumGear('def'); }
 function totalSpd() { return sumGear('spd'); }
+// 智力：随等级长，护符加成为主。只影响魔法威力
+function totalInt() { return 5 + (GS.p.lv - 1) * 2 + sumGear('int'); }
+// 魔法威力 = 基础 × (1 + 智力/100)。
+// 对 Boss 减半 —— 魔法无视防御，不减半的话孩子可以靠魔法绕过等级墙，
+// 而整套练级设计正是建立在"等级不够就打不动"上的。
+// 魔法威力 = 基础 + 智力。做成加法而不是百分比，
+// 是为了让"换个护符多了8点智力"能直接变成"每发多8点伤害"，孩子看得见。
+function spellPower(base, vsBoss) {
+  const v = base + totalInt();
+  if (!vsBoss) return v;
+  // Boss 魔抗随章节递增。魔法无视防御又能吃答题×1.5，
+  // 不压住的话孩子可以低5级纯靠魔法秒掉 Boss，整套练级设计就废了。
+  const resist = Math.min(0.78, 0.30 + GS.chapter * 0.068);
+  return Math.max(1, Math.round(v * (1 - resist)));
+}
 function hasGearFlag(flag) { return gearList().some(g => g[flag]); }
 function gearBoost(subject) { return gearList().some(g => g.boost === subject) ? 1.3 : 1; }
 function sellPrice(key) { return Math.floor(GEAR[key].buy * 0.75); }
@@ -834,7 +857,7 @@ class World extends Phaser.Scene {
   openMenu() {
     const p = GS.p;
     this.dialog.choice(
-      `勇者 Lv${p.lv}　💰${p.gold}\nHP ${p.hp}/${p.maxhp}　MP ${p.mp}/${p.maxmp}\n⚔️${totalAtk()} 🛡️${totalDef()} 👟${totalSpd()}`,
+      `勇者 Lv${p.lv}　💰${p.gold}\nHP ${p.hp}/${p.maxhp}　MP ${p.mp}/${p.maxmp}\n⚔️${totalAtk()} 🛡️${totalDef()} 👟${totalSpd()} 🧠${totalInt()}`,
       ['🎽 装备栏', '✨ 魔法（野外）', `📖 冒险手册（本章 ${chapterFrags()}/8）`,
        ...(GS.chapter > 0 ? ['🚪 回到上一章'] : []), '关闭'], i => {
         if (i === 0) this.equipMenu(() => this.openMenu());
@@ -1135,7 +1158,7 @@ class World extends Phaser.Scene {
       return `${SLOT_NAME[s]}：${g ? g.name : '（空）'}`;
     });
     labels.push('↩️ 返回');
-    this.dialog.choice(`装备栏　⚔️${totalAtk()} 🛡️${totalDef()} 👟${totalSpd()}`, labels, i => {
+    this.dialog.choice(`装备栏\n⚔️${totalAtk()} 🛡️${totalDef()} 👟${totalSpd()} 🧠${totalInt()}`, labels, i => {
       if (i >= SLOTS.length) { back(); return; }
       const slot = SLOTS[i];
       const choices = p.bag.filter(k => GEAR[k].slot === slot);
@@ -1646,6 +1669,7 @@ class Battle extends Phaser.Scene {
     };
     this.enemy.maxhp = this.enemy.hp;
     this.combo = 0;
+    this.spellCasts = 0;   // 同一场仗里施法次数，用来做魔法衰减
     this.hintNext = false;
     this.slowNext = false;
     this.shieldTurns = 0;
@@ -1707,7 +1731,7 @@ class Battle extends Phaser.Scene {
 
   updateBars() {
     const p = GS.p;
-    this.pName.setText(`勇者 Lv${p.lv}\n⚔️${totalAtk()} 🛡️${totalDef()}`);
+    this.pName.setText(`勇者 Lv${p.lv}\n⚔️${totalAtk()} 🛡️${totalDef()} 🧠${totalInt()}`);
     this.hpBar.setScale(200 * Math.max(0, p.hp / p.maxhp), 10);
     this.mpBar.setScale(200 * Math.max(0, p.mp / p.maxmp), 10);
     this.ehpBar.setScale(300 * Math.max(0, this.enemy.hp / this.enemy.maxhp), 14);
@@ -1810,23 +1834,22 @@ class Battle extends Phaser.Scene {
 
     if (s.kind === 'heal') {
       const before = GS.p.hp;
-      GS.p.hp = Math.min(GS.p.maxhp, GS.p.hp + s.val);
+      const amount = s.val >= 999 ? 9999 : spellPower(s.val, false);
+      GS.p.hp = Math.min(GS.p.maxhp, GS.p.hp + amount);
       this.updateBars();
       this.showFloat(`+${GS.p.hp - before}`, '#9fe89f', W / 2, 400);
       this.showMsgs([`【${s.name}】！\n恢复了 ${GS.p.hp - before} 点HP。`], () => this.enemyTurn(false));
       return;
     }
     if (s.kind === 'attack') {
-      this.enemy.hp -= s.val;   // 无视防御
-      this.enemySprite.setTint(0xffaa55);
-      this.tweens.add({ targets: this.enemySprite, x: '+=12', duration: 50, yoyo: true, repeat: 3,
-        onComplete: () => this.enemySprite.clearTint() });
-      this.showFloat(`-${s.val} 无视防御!`, '#ffb347');
-      this.updateBars();
-      this.showMsgs([`【${s.name}】！\n魔法不受防御影响，造成 ${s.val} 点伤害！`], () => {
-        if (this.enemy.hp <= 0) { this.victory(); return; }
-        this.enemyTurn(false);
-      });
+      const base = spellPower(s.val, this.isBoss);
+      this.state = 'menu';
+      this.msgText.setText(`【${s.name}】\n威力 ${base}（智力 ${totalInt()}）`);
+      this.clearButtons();
+      this.buttons.push(makeButton(this, 122, 660, 220, 76, '📖 答题加成\n答对 ×1.5',
+        () => this.castAttackQ(s, base, true), { fontSize: '18px', color: 0x3a6b45 }));
+      this.buttons.push(makeButton(this, 358, 660, 220, 76, `⚡ 直接放\n${base} 伤害`,
+        () => this.castAttackQ(s, base, false), { fontSize: '18px' }));
       return;
     }
     // buff
@@ -1835,6 +1858,54 @@ class Battle extends Phaser.Scene {
     else if (key === 'shield') { this.shieldTurns = 3; this.showMsgs(['【护盾术】！\n3 回合内受到的伤害减半。'], () => this.showMenu()); }
     else if (key === 'focus') { this.focused = true; this.showMsgs(['【集中术】！\n下一击必定暴击。'], () => this.showMenu()); }
     this.updateBars();
+  }
+
+  // 攻击魔法的答题加成：答对 ×1.5，答错或跳过按原威力 —— 只奖励，不惩罚
+  castAttackQ(s, base, withQuiz) {
+    this.clearButtons();
+    if (!withQuiz) { this.fireSpell(s, base, 1, null); return; }
+    const q = this.pickQuestion();
+    this.state = 'question';
+    this.msgText.setText(`${s.name}加成题：\n${q.text}`);
+    this.startSpeedBar();
+    const pos = [[122, 640], [358, 640], [122, 725], [358, 725]];
+    q.options.forEach((opt, i) => {
+      this.buttons.push(makeButton(this, pos[i][0], pos[i][1], 220, 66, opt, () => {
+        if (this.state !== 'question') return;
+        const ok = opt === q.answer;
+        this.qAskedAt = null; this.hideSpeedBar(); this.clearButtons();
+        this.fireSpell(s, base, ok ? 1.5 : 1, ok ? null : `答案是 ${q.answer}\n💡 ${q.tip}`);
+      }, { fontSize: '22px', color: 0x3a5f8b }));
+    });
+    this.buttons.push(makeButton(this, W / 2, 792, 200, 46, '跳过加成', () => {
+      if (this.state !== 'question') return;
+      this.qAskedAt = null; this.hideSpeedBar(); this.clearButtons();
+      this.fireSpell(s, base, 1, null);
+    }, { fontSize: '17px' }));
+  }
+
+  fireSpell(s, base, mult, wrongTip) {
+    // 同一场仗里连续施法威力递减：第1发100%、第2发80%、第3发60%…最低35%。
+    // 不加这条，孩子可以低等级靠连放魔法直接秒Boss，练级就没意义了
+    const decay = Math.max(0.35, 1 - 0.2 * this.spellCasts);
+    this.spellCasts++;
+    const dmg = Math.max(1, Math.round(base * mult * decay));
+    this.enemy.hp -= dmg;                       // 无视防御
+    this.enemySprite.setTint(0xffaa55);
+    this.tweens.add({ targets: this.enemySprite, x: '+=12', duration: 50, yoyo: true, repeat: 3,
+      onComplete: () => this.enemySprite.clearTint() });
+    this.showFloat(`-${dmg} 无视防御!`, '#ffb347');
+    if (mult > 1) this.showFloat('答对了! ×1.5', '#8ee88e', W / 2, 300);
+    this.updateBars();
+    const lines = [];
+    if (wrongTip) lines.push(wrongTip);
+    lines.push(`【${s.name}】！${mult > 1 ? '\n答对加成，' : '\n'}造成 ${dmg} 点伤害！`);
+    if (decay < 1) lines.push(`它开始适应你的魔法了……\n（这一场里魔法威力已降到 ${Math.round(decay * 100)}%）`);
+    else if (this.isBoss) lines.push('（Boss 有魔抗，魔法威力打了折）');
+    this.showMsgs(lines, () => {
+      if (this.enemy.hp <= 0) { this.victory(); return; }
+      this.enemyTurn(false);
+    });
   }
 
   showItems() {
@@ -1869,6 +1940,8 @@ class Battle extends Phaser.Scene {
     this.msgText.setText('用什么道具？');
   }
 
+  update() { this.updateSpeedBar(); }
+
   // ---- 出题 ----
   pickQuestion() {
     if (this.isRevenge && GS.pool.length) {
@@ -1891,6 +1964,7 @@ class Battle extends Phaser.Scene {
     this.q = this.pickQuestion();
     this.isSkill = isSkill;
     this.msgText.setText(this.q.text);
+    this.startSpeedBar();
 
     let opts = this.q.options.slice();
     if (this.hintNext) {
@@ -1920,6 +1994,34 @@ class Battle extends Phaser.Scene {
     }
   }
 
+  // 速度条：绿(≤2秒 ×1.5) → 黄(≤3秒 ×1.2) → 灰(×1.0)。只奖励，不惩罚
+  startSpeedBar() {
+    this.qAskedAt = this.time.now;
+    if (!this.speedBar) {
+      this.speedBg = this.add.rectangle(W / 2, 570, 444, 16, 0x2a2a34).setStrokeStyle(2, 0x555566);
+      this.speedBar = this.add.image(20, 570, 'px').setOrigin(0, 0.5);
+      this.speedTxt = this.add.text(W - 26, 570, '', { fontSize: '18px', fontFamily: FONT, fontStyle: 'bold' }).setOrigin(1, 0.5);
+    }
+    [this.speedBg, this.speedBar, this.speedTxt].forEach(o => o.setVisible(true));
+    this.speedBar.setScale(440, 12).setTint(SPEED_TIERS[0].color);
+    this.speedTxt.setText(SPEED_TIERS[0].label).setColor('#8ee88e');
+  }
+
+  hideSpeedBar() {
+    [this.speedBg, this.speedBar, this.speedTxt].forEach(o => o && o.setVisible(false));
+  }
+
+  updateSpeedBar() {
+    if (this.state !== 'question' || !this.speedBar || !this.qAskedAt) return;
+    const el = this.time.now - this.qAskedAt;
+    const span = SPEED_TIERS[SPEED_TIERS.length - 1].ms;      // 条子在 3 秒内走完
+    const left = Math.max(0, 1 - el / span);
+    this.speedBar.setScale(440 * left, 12);
+    const t = speedTier(el);
+    this.speedBar.setTint(t.color);
+    this.speedTxt.setText(t.label).setColor(t === SPEED_BASE ? '#9aa2bd' : (t.mult === 1.5 ? '#8ee88e' : '#ffd76a'));
+  }
+
   stopTimer() {
     if (this.timerTween) { this.timerTween.remove(); this.timerTween = null; }
     this.timerBar.setVisible(false);
@@ -1932,6 +2034,10 @@ class Battle extends Phaser.Scene {
 
   resolve(correct) {
     this.clearButtons();
+    const elapsed = this.qAskedAt ? this.time.now - this.qAskedAt : 9999;
+    const tier = correct ? speedTier(elapsed) : SPEED_BASE;
+    this.qAskedAt = null;
+    this.hideSpeedBar();
     this.state = 'anim';
 
     if (correct) {
@@ -1942,6 +2048,7 @@ class Battle extends Phaser.Scene {
       dmg = Math.round(dmg * gearBoost(subject));
       if (this.isSkill) dmg = Math.round(dmg * 2.2);
       if (this.focused) { dmg *= 2; this.focused = false; }
+      dmg = Math.round(dmg * tier.mult);          // 答得快，打得重
       if (perfect) dmg *= 2;
       this.enemy.hp -= dmg;
 
@@ -1955,6 +2062,9 @@ class Battle extends Phaser.Scene {
       const tooWeak = totalAtk() - this.enemy.def <= 1;
       if (tooWeak && !perfect) this.showFloat('伤不到它…', '#ff9955');
       else this.showFloat(`-${dmg}${perfect ? ' 暴击!!' : ''}`, perfect ? '#ffd700' : '#ffffff');
+      if (tier.mult > 1) {
+        this.showFloat(`手快! ${tier.label}`, tier.mult === 1.5 ? '#8ee88e' : '#ffd76a', W / 2, 300);
+      }
 
       if (perfect) {
         GS.p.mp = Math.min(GS.p.maxmp, GS.p.mp + 2);   // 会做题就有魔法可用

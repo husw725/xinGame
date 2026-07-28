@@ -86,7 +86,7 @@ const ENEMIES = {
 const SLOTS = ['weapon', 'head', 'shield', 'boots', 'charm'];
 const SLOT_NAME = { weapon:'⚔️武器', head:'🎩帽子', shield:'🛡️盾牌', boots:'👟鞋子', charm:'📿护符' };
 // 每个部位看哪个属性做比较（护符没有数值，只看效果说明）
-const SLOT_PROP = { weapon:'atk', head:'def', shield:'def', boots:'spd', charm:null };
+const SLOT_PROP = { weapon:'atk', head:'def', shield:'def', boots:'spd', charm:'int' };
 
 const GEAR = {
   // 武器
@@ -99,7 +99,7 @@ const GEAR = {
   cloth_h:  { slot:'head',   name:'布帽',     def:1,  buy:30,  desc:'挡挡太阳' },
   leather_h:{ slot:'head',   name:'皮帽',     def:3,  buy:80,  desc:'结实一点' },
   iron_h:   { slot:'head',   name:'铁头盔',   def:5,  buy:220, desc:'沉，但很安全' },
-  scholar_h:{ slot:'head',   name:'学士帽',   def:4,  buy:0,   desc:'经验+10%', expBonus:0.1, treasure:true },
+  scholar_h:{ slot:'head',   name:'学士帽',   def:4,  int:6, buy:0, desc:'经验+10%，智力+6', expBonus:0.1, treasure:true },
   // 盾牌
   wood_s:   { slot:'shield', name:'木板盾',   def:2,  buy:40,  desc:'一块木板' },
   iron_s:   { slot:'shield', name:'铁皮盾',   def:4,  buy:150, desc:'铁做的，靠得住' },
@@ -109,14 +109,14 @@ const GEAR = {
   straw_b:  { slot:'boots',  name:'草鞋',     spd:2,  buy:35,  desc:'走得快一点' },
   wind_b:   { slot:'boots',  name:'疾风靴',   spd:5,  buy:180, desc:'走得飞快' },
   // 护符
-  abacus:   { slot:'charm',  name:'铜算盘',   buy:100, desc:'金币+20%', goldBonus:0.2 },
-  dict:     { slot:'charm',  name:'字典护符', buy:160, desc:'语文题伤害+30%', boost:'chinese' },
-  necklace: { slot:'charm',  name:'九九项链', buy:0,   desc:'数学题伤害+30%', boost:'math', treasure:true },
+  abacus:   { slot:'charm',  name:'铜算盘',   int:2,  buy:100, desc:'金币+20%，智力+2', goldBonus:0.2 },
+  dict:     { slot:'charm',  name:'字典护符', int:8,  buy:160, desc:'语文题伤害+30%，智力+8', boost:'chinese' },
+  necklace: { slot:'charm',  name:'九九项链', int:10, buy:0,   desc:'数学题伤害+30%，智力+10', boost:'math', treasure:true },
   // --- 第二章新增 ---
   tri_sword:{ slot:'weapon', name:'三角尺剑', atk:7,  buy:200, desc:'三个角都很锋利' },
   abacus_s: { slot:'shield', name:'算盘盾',   def:5,  buy:260, desc:'珠子噼啪响，挡得住' },
-  divider:  { slot:'charm',  name:'分糖锦囊', buy:240, desc:'答对时额外回2点MP', mpBonus:2 },
-  hookband: { slot:'charm',  name:'钩爪腕带', buy:0,   desc:'金币+35%', goldBonus:0.35, treasure:true },
+  divider:  { slot:'charm',  name:'分糖锦囊', int:6,  buy:240, desc:'答对回2点MP，智力+6', mpBonus:2 },
+  hookband: { slot:'charm',  name:'钩爪腕带', int:4,  buy:0,   desc:'金币+35%，智力+4', goldBonus:0.35, treasure:true },
 };
 
 // 第1章商店卖什么（宝箱专属的不卖）

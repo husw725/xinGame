@@ -222,6 +222,12 @@ const NPC_PALETTES = {
   npc_elder:    { h:'#cfcfcf', s:'#f2c9a0', k:'#232323', b:'#8a6d4a' },
   npc_merchant: { h:'#4a2f1a', s:'#f2c9a0', k:'#232323', b:'#d87f3a' },
   npc_teacher:  { h:'#26221e', s:'#f2c9a0', k:'#232323', b:'#6e58c8' },
+  npc_smith:    { h:'#3a2a12', s:'#e0b088', k:'#232323', b:'#6b4a2c' },
+  npc_aunt:     { h:'#4a2f1a', s:'#f2c9a0', k:'#232323', b:'#3f9b6d' },
+  npc_girl:     { h:'#5a3a18', s:'#f7d6b0', k:'#232323', b:'#e07fa8' },
+  npc_grandpa:  { h:'#e8e8e8', s:'#e8bf95', k:'#232323', b:'#5a6b8a' },
+  npc_boy:      { h:'#241c14', s:'#f2c9a0', k:'#232323', b:'#d8b23a' },
+  npc_traveler: { h:'#2a2a2a', s:'#d9a878', k:'#232323', b:'#8a7548' },
 };
 
 function hexInt(hex) { return parseInt(hex.slice(1), 16); }
@@ -380,6 +386,43 @@ function makeTextures(scene) {
   ln.fillStyle(hexInt('#8a5a24'), 1); ln.fillRect(9, 9, 2, 6);
   ln.generateTexture('lens', 16, 16);
   ln.destroy();
+
+  // ---- 室内 ----
+  makeTile(scene, 't_floor', '#c8a878', g => {
+    g.fillStyle(hexInt('#b89868'), 1);
+    g.fillRect(0, 0, 16, 1); g.fillRect(0, 8, 16, 1);
+    g.fillRect(0, 0, 1, 16); g.fillRect(8, 8, 1, 8);
+    dots(g, '#d4b688', [[4,4],[12,12],[3,11]]);
+  });
+  makeTile(scene, 't_iwall', '#8a6a48', g => {
+    g.fillStyle(hexInt('#6e5236'), 1);
+    g.fillRect(0, 5, 16, 1); g.fillRect(0, 11, 16, 1);
+    g.fillRect(5, 0, 1, 5); g.fillRect(11, 6, 1, 5);
+  });
+  makeTile(scene, 't_cabinet', '#c8a878', g => {
+    g.fillStyle(hexInt('#7a4e22'), 1); g.fillRect(2, 2, 12, 13);
+    g.fillStyle(hexInt('#9a6b3a'), 1); g.fillRect(3, 3, 10, 5); g.fillRect(3, 9, 10, 5);
+    g.fillStyle(hexInt('#f4c542'), 1); g.fillRect(7, 6, 2, 1); g.fillRect(7, 12, 2, 1);
+  });
+  makeTile(scene, 't_table', '#c8a878', g => {
+    g.fillStyle(hexInt('#9a6b3a'), 1); g.fillRect(1, 5, 14, 4);
+    g.fillStyle(hexInt('#7a4e22'), 1); g.fillRect(3, 9, 2, 5); g.fillRect(11, 9, 2, 5);
+  });
+  makeTile(scene, 't_plant', '#c8a878', g => {
+    g.fillStyle(hexInt('#a9713a'), 1); g.fillRect(5, 10, 6, 5);
+    g.fillStyle(hexInt('#3f9b47'), 1); g.fillCircle(8, 6, 4);
+    g.fillStyle(hexInt('#5cc45c'), 1); g.fillCircle(6, 5, 2);
+  });
+  makeTile(scene, 't_bed', '#c8a878', g => {
+    g.fillStyle(hexInt('#7a4e22'), 1); g.fillRect(1, 3, 14, 11);
+    g.fillStyle(hexInt('#e8e0d0'), 1); g.fillRect(2, 4, 12, 5);
+    g.fillStyle(hexInt('#c05a5a'), 1); g.fillRect(2, 9, 12, 4);
+  });
+  makeTile(scene, 't_exit', '#c8a878', g => {
+    g.fillStyle(hexInt('#5e3a17'), 1); g.fillRect(3, 1, 10, 14);
+    g.fillStyle(hexInt('#3a2410'), 1); g.fillRect(4, 2, 8, 12);
+    g.fillStyle(hexInt('#f4c542'), 1); g.fillRect(10, 8, 1, 2);
+  });
 
   // 水晶（透明背景菱形）
   const g = scene.make.graphics({ x: 0, y: 0, add: false });

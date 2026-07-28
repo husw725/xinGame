@@ -13,6 +13,10 @@ function defaultState() {
       bag: [], // 备用装备
     },
     flags: { intro: false, boss: false, puzzle: false },
+    clues: [],    // 已记下的线索 key
+    quest: {},    // 支线状态：dodo = null/'taken'/'found'/'done'
+    locks: [],    // 已解开的宝箱锁编号
+    searched: {}, // 各屋内翻过的家具
     pool: [],
     frags: [],    // 已收集的记忆碎片编号
     chests: [],   // 已开的宝箱编号
@@ -272,13 +276,17 @@ class World extends Phaser.Scene {
     }
 
     // --- NPC ---
-    const npcDefs = { '1': ['npc_elder', '村长'], '2': ['npc_merchant', '商人'], '3': ['npc_teacher', '老师'] };
     for (let y = 0; y < MAPH; y++) for (let x = 0; x < MAPW; x++) {
       const ch = MAP[y][x];
-      if (npcDefs[ch]) {
-        this.add.image(x * TILE + 16, y * TILE + 16, npcDefs[ch][0]).setScale(2).setDepth(5);
+      if (NPCS[ch]) {
+        this.add.image(x * TILE + 16, y * TILE + 16, NPCS[ch].tex).setScale(2).setDepth(5);
         this.blocked.add(x + ',' + y);
         this.npcs[x + ',' + y] = ch;
+      } else if (ch === 'b' && GS.quest.dodo === 'taken') {
+        // 朵朵的作业本（只在接了委托后出现）
+        const spr = this.add.image(x * TILE + 16, y * TILE + 16, 'frag').setScale(2).setDepth(4).setTint(0x9fd8f0);
+        this.tweens.add({ targets: spr, y: spr.y - 5, duration: 800, yoyo: true, repeat: -1 });
+        this.book = { x, y, spr };
       }
     }
 
@@ -402,7 +410,14 @@ class World extends Phaser.Scene {
     }
     // 宝箱
     if (this.chests[key] !== undefined && !GS.chests.includes(this.chests[key])) {
-      this.openChest(key, this.chests[key]); return;
+      this.tryChest(key, this.chests[key]); return;
+    }
+    // 朵朵的作业本
+    if (this.book && this.book.x === nx && this.book.y === ny) {
+      this.book.spr.destroy(); this.book = null;
+      GS.quest.dodo = 'found'; saveGame();
+      this.dialog.say(['捡到了一本浅蓝色封面的作业本。', '是朵朵丢的那本吧？\n拿回村里还给她。']);
+      return;
     }
     // 记忆碎片
     if (this.frags[key] !== undefined) { this.pickFrag(key, this.frags[key], false); return; }
@@ -432,7 +447,11 @@ class World extends Phaser.Scene {
     }
     // NPC
     if (this.npcs[key]) { this.talkNpc(this.npcs[key]); return; }
-    if (this.doors.has(key)) { this.dialog.say(['门锁着……里面好像没有人。']); return; }
+    if (this.doors.has(key)) {
+      if (HOUSES[key]) { this.enterHouse(key); return; }
+      this.dialog.say(['门锁着……里面好像没有人。']);
+      return;
+    }
     if (this.blocked.has(key)) return;
 
     // 移动（鞋子加速：孩子唯一能用眼睛立刻看出来的属性）
@@ -464,7 +483,25 @@ class World extends Phaser.Scene {
     }
   }
 
+  // 记下线索：屏幕闪一下，孩子才知道"这句话被存起来了"
+  addClue(key) {
+    if (GS.clues.includes(key)) return false;
+    GS.clues.push(key);
+    saveGame();
+    const t = this.add.text(W / 2, 150, '📓 记到线索本里了', {
+      fontSize: '22px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold',
+      stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+    this.tweens.add({ targets: t, y: 110, alpha: 0, duration: 1600, onComplete: () => t.destroy() });
+    return true;
+  }
+
   talkNpc(id) {
+    const npc = NPCS[id];
+    if (npc && npc.role === 'clue')   { this.npcClue(id, npc); return; }
+    if (npc && npc.role === 'quest')  { this.npcQuest(id, npc); return; }
+    if (npc && npc.role === 'lore')   { this.npcLore(npc); return; }
+    if (npc && npc.role === 'chat')   { this.npcChat(npc); return; }
     if (id === '1') { // 村长
       const lines = GS.flags.boss
         ? ['你夺回了记忆水晶，太了不起了！',
@@ -511,12 +548,49 @@ class World extends Phaser.Scene {
   handbook() {
     const toolTxt = GS.tools.length ? GS.tools.map(t => t === 'lens' ? '🔍放大镜' : t).join(' ') : '（还没有）';
     this.dialog.choice(
-      `冒险手册\n本章碎片 ${GS.frags.length}/8　图鉴 ${GS.dex.length}/5\n工具：${toolTxt}`,
-      ['📜 捡到的日记', '👾 怪物图鉴', '↩️ 返回'], i => {
-        if (i === 0) this.readDiary();
-        else if (i === 1) this.showDex();
+      `冒险手册\n本章碎片 ${GS.frags.length}/8　图鉴 ${GS.dex.length}/5\n线索 ${GS.clues.length}/4　工具：${toolTxt}`,
+      ['📓 线索本', '📜 捡到的日记', '👾 怪物图鉴', '↩️ 返回'], i => {
+        if (i === 0) this.showClues();
+        else if (i === 1) this.readDiary();
+        else if (i === 2) this.showDex();
         else this.openMenu();
       });
+  }
+
+  // 线索本：按"服务于哪个锁"分组。孩子不需要"想起来"，只需要"看得到"
+  showClues() {
+    const groups = {};
+    Object.entries(CLUES).forEach(([k, c]) => {
+      (groups[c.lock] = groups[c.lock] || []).push({ k, c });
+    });
+    const lines = [];
+    const codeLock = CHEST_LOCKS.findIndex(l => l.kind === 'code');
+    const solved = GS.locks.includes(codeLock);
+
+    const chest = groups.chest3 || [];
+    lines.push(`${solved ? '✅' : '🔒'} 沙漠尽头宝箱的口令` +
+      (solved ? '（已解开）' : `（还差 ${chest.filter(x => !GS.clues.includes(x.k)).length} 条）`));
+    chest.forEach(({ k, c }) => {
+      lines.push(GS.clues.includes(k)
+        ? `　· ${c.from}：${c.note}　✓`
+        : '　· ？？？　还没问到');
+    });
+
+    const lore = (groups.lore || []).filter(x => GS.clues.includes(x.k));
+    if (lore.length) {
+      lines.push('📌 其他消息');
+      lore.forEach(({ c }) => lines.push(`　· ${c.from}：${c.note}`));
+    }
+
+    if (!GS.clues.length) {
+      this.dialog.say(['线索本还是空的。',
+        '去和村里的人聊聊吧——\n他们知道的比看上去多。'], () => this.handbook());
+      return;
+    }
+    // 一屏放不下就分段
+    const chunks = [];
+    for (let i = 0; i < lines.length; i += 5) chunks.push(lines.slice(i, i + 5).join('\n'));
+    this.dialog.say(chunks, () => this.handbook());
   }
 
   readDiary() {
@@ -686,6 +760,169 @@ class World extends Phaser.Scene {
     });
   }
 
+  // ---- 线索 NPC：握着解谜必需的信息 ----
+  npcClue(id, npc) {
+    const c = CLUES[npc.clue];
+    const first = !GS.clues.includes(npc.clue);
+    const lines = {
+      '4': first
+        ? ['（叮、叮——铁匠头也不抬。）', '沙漠尽头那个箱子？我知道口令。',
+           c.ask, '算不出来就别问我了，我忙。']
+        : ['第一个数，二三得几。我说过了。'],
+      '5': first
+        ? ['哎哟，来喝口水吧，沙漠里可干了。',
+           '那个上锁的箱子啊，我家老头子当年也开过。', c.ask,
+           '哎，人老了记性差，你自己算算。']
+        : ['第二个数，二的四倍。别记错了。'],
+      '9': first
+        ? ['（一个风尘仆仆的旅人坐在石头上。）',
+           '我走遍了这片沙漠。', c.ask, '你要是拿到了放大镜，记得回来找找。']
+        : ['沙子颜色不一样的地方，用放大镜看。'],
+    }[id];
+    this.dialog.say(lines, () => { if (first) this.addClue(npc.clue); }, npc.name);
+  }
+
+  // ---- 委托 NPC：线索要靠帮忙换 ----
+  npcQuest(id, npc) {
+    const st = GS.quest.dodo;
+    if (!st) {
+      this.dialog.say(['呜……我把作业本弄丢了。',
+        '我记得是在沙漠里，一个左边的岔路上。', '你能帮我找回来吗？'], () => {
+        this.dialog.choice('要接下这个委托吗？', ['好，我去找', '再说吧'], i => {
+          if (i === 0) {
+            GS.quest.dodo = 'taken'; saveGame();
+            this.dialog.say(['太好了！\n它是浅蓝色封面的，很好认。'], null, npc.name);
+          }
+        });
+      }, npc.name);
+    } else if (st === 'taken') {
+      this.dialog.say(['找到了吗？\n在沙漠左边的岔路上，我记得的。'], null, npc.name);
+    } else if (st === 'found') {
+      GS.quest.dodo = 'done';
+      const c = CLUES.code3;
+      this.dialog.say(['啊！就是它！谢谢你！',
+        '我告诉你一个秘密——\n沙漠尽头那个箱子的口令，\n我偷偷看见过第三个数。',
+        c.ask], () => { this.addClue('code3'); }, npc.name);
+    } else {
+      this.dialog.say(['第三个数是五五二十五里的五！\n我不会记错的。'], null, npc.name);
+    }
+  }
+
+  // ---- 暗线 NPC：让主线谜团从环境里渗出来 ----
+  npcLore(npc) {
+    const lines = GS.flags.boss
+      ? ['沙漠安静下来了。',
+         '以前有个孩子，总一个人坐在沙丘上。\n一坐就是一下午。',
+         '我问他怎么了，他不说。\n后来他就不来了。',
+         '……你捡到的那些纸，\n是不是他写的？']
+      : ['我在这儿守了四十年林子。',
+         '知识村刚建起来那会儿，\n只有一个学生。',
+         '那孩子来得最早，走得最晚。\n可是……唉。',
+         '算了，都过去了。'];
+    this.dialog.say(lines, null, npc.name);
+  }
+
+  // ---- 闲聊 NPC：世界要活，台词随进度变 ----
+  npcChat(npc) {
+    const lines = GS.flags.boss
+      ? ['你把骆驼王打败啦？！',
+         '我长大也要当勇者！\n……不过我得先学会九九表。']
+      : GS.frags.length > 0
+        ? ['你捡的那些黄纸片是什么呀？',
+           '看起来好旧哦。\n是谁写的呀？']
+        : ['我叫石头！',
+           '沙漠里有怪物，我娘不让我去。',
+           '你要是去的话……\n能帮我看看有没有宝箱吗？'];
+    this.dialog.say(lines, null, npc.name);
+  }
+
+  // ---- 宝箱锁：短、杂、无惩罚。答错随便重来，唯一代价是时间 ----
+  tryChest(key, n) {
+    if (GS.locks.includes(n)) { this.openChest(key, n); return; }
+    const lock = CHEST_LOCKS[n];
+    if (!lock) { this.openChest(key, n); return; }
+    this.dialog.say([`箱子锁着。${lock.icon}\n${lock.hint}`], () => {
+      if (lock.kind === 'calc')    this.lockCalc(key, n, 'mult');
+      else if (lock.kind === 'balance') this.lockCalc(key, n, 'balance');
+      else if (lock.kind === 'code')    this.lockCode(key, n, lock);
+    });
+  }
+
+  // 算式锁 / 天平锁：都是四选一，共用一套
+  lockCalc(key, n, qtype, tries = 0) {
+    const q = getQuestion(qtype);
+    // 连错3次自动降难度：选项从4个减到2个
+    let opts = q.options;
+    if (tries >= 3) {
+      const wrong = opts.filter(o => o !== q.answer);
+      opts = Phaser.Utils.Array.Shuffle([q.answer, wrong[0]]);
+    }
+    this.dialog.choice(q.text + (tries >= 3 ? '\n（提示：只剩两个了）' : ''), opts, i => {
+      if (opts[i] === q.answer) {
+        GS.locks.push(n); saveGame();
+        this.dialog.say(['咔哒——锁开了！'], () => this.openChest(key, n));
+      } else {
+        this.dialog.say([`不对哦。\n💡 ${q.tip}`, '再试一次吧，不会有惩罚的。'],
+          () => this.lockCalc(key, n, qtype, tries + 1));
+      }
+    });
+  }
+
+  // 口令锁：三个数字轮盘，答案在三个 NPC 嘴里
+  lockCode(key, n, lock) {
+    const known = lock.clues.filter(k => GS.clues.includes(k));
+    if (known.length < lock.clues.length) {
+      this.dialog.say([
+        `三个轮盘，你只知道 ${known.length}/3 个数。`,
+        '村里有人知道口令。\n先去问问吧。',
+        known.length ? '（已知的记在冒险手册的线索本里）' : '（铁匠、卖水的婶婶……都可以问问）',
+      ]);
+      return;
+    }
+    const answer = lock.clues.map(k => CLUES[k].answer);
+    const dial = [0, 0, 0];
+    const ui = [];
+    const clear = () => { ui.forEach(o => o.destroy()); ui.length = 0; };
+
+    const draw = () => {
+      clear();
+      const bg = this.add.rectangle(W / 2, 300, 440, 300, 0x14182e, 0.97)
+        .setStrokeStyle(4, 0xf4e6c0).setScrollFactor(0).setDepth(250);
+      const title = this.add.text(W / 2, 190, '转到正确的三个数', {
+        fontSize: '22px', fontFamily: FONT, color: '#ffe08a' }).setOrigin(0.5).setScrollFactor(0).setDepth(251);
+      ui.push(bg, title);
+      dial.forEach((v, i) => {
+        const x = W / 2 - 120 + i * 120;
+        const num = this.add.text(x, 290, String(v), {
+          fontSize: '52px', fontFamily: FONT, color: '#fff', fontStyle: 'bold' })
+          .setOrigin(0.5).setScrollFactor(0).setDepth(251);
+        ui.push(num);
+        [['▲', 240, 1], ['▼', 350, -1]].forEach(([ch, y, d]) => {
+          const b = makeButton(this, x, y, 76, 56, ch, () => {
+            dial[i] = (dial[i] + d + 10) % 10;
+            num.setText(String(dial[i]));
+          }, { fontSize: '24px' });
+          b.bg.setScrollFactor(0).setDepth(251); b.txt.setScrollFactor(0).setDepth(252);
+          ui.push(b.bg, b.txt);
+        });
+      });
+      const ok = makeButton(this, W / 2 - 110, 420, 190, 56, '✓ 试试看', () => {
+        if (dial.every((v, i) => v === answer[i])) {
+          clear();
+          GS.locks.push(n); saveGame();
+          this.dialog.say(['咔哒、咔哒、咔哒——\n三个轮盘同时停住了！'], () => this.openChest(key, n));
+        } else {
+          const t = this.add.text(W / 2, 470, '不对，再想想…', { fontSize: '20px', fontFamily: FONT, color: '#ff9a9a' })
+            .setOrigin(0.5).setScrollFactor(0).setDepth(252);
+          this.time.delayedCall(1200, () => t.destroy());
+        }
+      }, { fontSize: '20px', color: 0x3a6b45 });
+      const no = makeButton(this, W / 2 + 110, 420, 190, 56, '↩️ 算了', () => { clear(); }, { fontSize: '20px' });
+      [ok, no].forEach(b => { b.bg.setScrollFactor(0).setDepth(251); b.txt.setScrollFactor(0).setDepth(252); ui.push(b.bg, b.txt); });
+    };
+    draw();
+  }
+
   openChest(key, n) {
     GS.chests.push(n);
     this.blocked.delete(key);
@@ -727,6 +964,14 @@ class World extends Phaser.Scene {
     lines.push(`（本章记忆碎片 ${GS.frags.length}/8）`);
     if (GS.frags.length === 8) lines.push('这一章的八页都找到了。\n日记还长着呢。');
     this.dialog.say(lines);
+  }
+
+  enterHouse(key) {
+    this.inBattle = true;          // 借用同一个锁，停掉地图输入
+    this.held = null; this.queued = null;
+    this.cameras.main.resetFX();
+    this.scene.launch('House', { door: key });
+    this.scene.sleep();
   }
 
   enterDungeon() {
@@ -778,6 +1023,22 @@ class World extends Phaser.Scene {
       GS.fromPuzzle = false;
       saveGame();
       this.scene.restart();
+      return;
+    }
+    // 从屋里出来：站回门口下方
+    if (GS.fromHouse) {
+      const [hx, hy] = GS.fromHouse.split(',').map(Number);
+      GS.fromHouse = null;
+      this.px = hx; this.py = hy + 1;
+      GS.pos = { x: this.px, y: this.py };
+      this.player.setPosition(this.px * TILE + 16, this.py * TILE + 16);
+      saveGame(); this.updateHUD();
+      return;
+    }
+    // 在屋里和屋主说话
+    if (GS.houseOwner) {
+      const owner = GS.houseOwner; GS.houseOwner = null;
+      this.time.delayedCall(200, () => this.talkNpc(owner));
       return;
     }
 
@@ -1253,6 +1514,143 @@ class Battle extends Phaser.Scene {
   }
 }
 
+// ============ 室内（进屋、翻柜子） ============
+class House extends Phaser.Scene {
+  constructor() { super('House'); }
+  init(data) { this.doorKey = data.door; }
+
+  create() {
+    const h = HOUSES[this.doorKey];
+    this.h = h;
+    this.rows = h.rows;
+    this.gw = this.rows[0].length;
+    this.gh = this.rows.length;
+    this.cell = 52;
+    this.ox = (W - this.gw * this.cell) / 2;
+    this.oy = 150;
+    this.searched = GS.searched[this.doorKey] = GS.searched[this.doorKey] || [];
+
+    this.add.rectangle(W / 2, H / 2, W, H, 0x1a1410);
+    this.add.text(W / 2, 60, h.name, { fontSize: '28px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(W / 2, 100, '柜子、桌子、盆栽都可以翻一翻', { fontSize: '16px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
+
+    const TEX = { W: 't_iwall', F: 't_floor', D: 't_exit', u: 't_cabinet', t: 't_table', p: 't_plant', B: 't_bed', N: 't_floor' };
+    this.furn = {};
+    for (let y = 0; y < this.gh; y++) for (let x = 0; x < this.gw; x++) {
+      const ch = this.rows[y][x];
+      if (ch !== 'W') this.add.image(this.px(x), this.py(y), 't_floor').setDisplaySize(this.cell, this.cell);
+      this.add.image(this.px(x), this.py(y), TEX[ch] || 't_floor').setDisplaySize(this.cell, this.cell);
+      if ('utp'.includes(ch)) {
+        this.furn[x + ',' + y] = true;
+        if (this.searched.includes(x + ',' + y)) {
+          this.add.text(this.px(x), this.py(y) - 16, '·', { fontSize: '18px', color: '#8a7548' }).setOrigin(0.5).setDepth(6);
+        }
+      }
+      if (ch === 'N') {
+        this.add.image(this.px(x), this.py(y), NPCS[h.owner].tex).setDisplaySize(this.cell * 0.9, this.cell * 0.9).setDepth(5);
+        this.ownerTile = { x, y };
+      }
+      if (ch === 'D') this.exitTile = { x, y };
+    }
+
+    // 玩家从门口进来
+    this.pos = { x: this.exitTile.x, y: this.exitTile.y - 1 };
+    this.hero = this.add.image(this.px(this.pos.x), this.py(this.pos.y), 'hero_u')
+      .setDisplaySize(this.cell * 0.9, this.cell * 0.9).setDepth(10);
+
+    this.msg = this.add.text(W / 2, this.oy + this.gh * this.cell + 30, '',
+      { fontSize: '20px', fontFamily: FONT, color: '#fff2c0', align: 'center', wordWrap: { width: 430 } }).setOrigin(0.5);
+
+    this.makePad();
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.queued = null; this.moving = false; this.busy = false;
+  }
+
+  px(x) { return this.ox + x * this.cell + this.cell / 2; }
+  py(y) { return this.oy + y * this.cell + this.cell / 2; }
+
+  makePad() {
+    const cx = 100, cy = 726, gap = 66, sz = 62;
+    [['up', cx, cy - gap, '▲'], ['down', cx, cy + gap, '▼'], ['left', cx - gap, cy, '◀'], ['right', cx + gap, cy, '▶']]
+      .forEach(([d, x, y, ch]) => {
+        const r = this.add.rectangle(x, y, sz, sz, 0x2c3e6b, 0.85).setStrokeStyle(2, 0xf4e6c0).setInteractive();
+        this.add.text(x, y, ch, { fontSize: '22px', color: '#fff' }).setOrigin(0.5);
+        r.on('pointerdown', () => { if (!this.busy) this.queued = d; });
+      });
+    makeButton(this, 350, 726, 190, 60, '🚪 出去', () => this.leave(), { fontSize: '20px' });
+  }
+
+  update() {
+    if (this.moving || this.busy) return;
+    let d = this.queued; this.queued = null;
+    if (!d) {
+      if (this.cursors.up.isDown) d = 'up';
+      else if (this.cursors.down.isDown) d = 'down';
+      else if (this.cursors.left.isDown) d = 'left';
+      else if (this.cursors.right.isDown) d = 'right';
+    }
+    if (d) this.step(d);
+  }
+
+  step(dir) {
+    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+    this.hero.setTexture({ up: 'hero_u', down: 'hero_d', left: 'hero_s', right: 'hero_s' }[dir]).setFlipX(dir === 'left');
+    const nx = this.pos.x + dx, ny = this.pos.y + dy;
+    if (nx < 0 || ny < 0 || nx >= this.gw || ny >= this.gh) return;
+    const ch = this.rows[ny][nx];
+
+    if (ch === 'D') { this.leave(); return; }
+    if (ch === 'N') { this.busy = true; this.talkOwner(); return; }
+    if (this.furn[nx + ',' + ny]) { this.busy = true; this.search(nx, ny); return; }
+    if (HOUSE_BLOCK.includes(ch)) return;
+
+    this.moving = true;
+    this.pos = { x: nx, y: ny };
+    this.tweens.add({ targets: this.hero, x: this.px(nx), y: this.py(ny), duration: 120,
+      onComplete: () => { this.moving = false; } });
+  }
+
+  // 翻家具：大部分是空的，偶尔有惊喜
+  search(x, y) {
+    const key = x + ',' + y;
+    if (this.searched.includes(key)) {
+      this.msg.setText('这里已经翻过了。');
+      this.time.delayedCall(900, () => { this.msg.setText(''); this.busy = false; });
+      return;
+    }
+    this.searched.push(key);
+    const loot = rollLoot();
+    let text;
+    if (loot.kind === 'none') {
+      text = loot.msgs[Phaser.Math.Between(0, loot.msgs.length - 1)];
+    } else if (loot.kind === 'gold') {
+      const n = Phaser.Math.Between(loot.min, loot.max);
+      GS.p.gold += n; text = loot.msg.replace('{n}', n);
+    } else if (loot.kind === 'potion') { GS.p.potion++; text = loot.msg; }
+    else if (loot.kind === 'ether')    { GS.p.ether++;  text = loot.msg; }
+    else if (loot.kind === 'scroll')   { GS.p.scroll++; text = loot.msg; }
+    else if (loot.kind === 'herb')     { GS.p.mp = GS.p.maxmp; text = loot.msg; }
+    saveGame();
+    this.add.text(this.px(x), this.py(y) - 16, '·', { fontSize: '18px', color: '#8a7548' }).setOrigin(0.5).setDepth(6);
+    this.msg.setText(text);
+    if (loot.kind !== 'none') this.cameras.main.flash(180, 255, 240, 180);
+    this.time.delayedCall(1400, () => { this.msg.setText(''); this.busy = false; });
+  }
+
+  talkOwner() {
+    GS.houseOwner = this.h.owner;
+    this.scene.stop();
+    this.scene.wake('World');
+  }
+
+  leave() {
+    GS.fromHouse = this.doorKey;
+    saveGame();
+    this.scene.stop();
+    this.scene.wake('World');
+  }
+}
+
 // ============ 推箱子迷宫 ============
 class Puzzle extends Phaser.Scene {
   constructor() { super('Puzzle'); }
@@ -1456,6 +1854,6 @@ window.game = new Phaser.Game({
   pixelArt: true,
   backgroundColor: '#000',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, World, Battle, Puzzle, Clear],
+  scene: [Boot, Title, World, Battle, Puzzle, House, Clear],
 });
 window.GS = GS;

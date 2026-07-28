@@ -10,15 +10,15 @@ const MAP = [
   "T..rrr......-....rrr....T",
   "T..www......-....www....T",
   "T..wdw......-....wdw....T",
-  "T...1.......-.....2.....T", // 5  村长 / 商人
-  "T...........-...........T",
+  "T...........-...........T", // 5  （村长/商人已移入屋内）
+  "T.......4...-...........T", // 6  铁匠老王
   "T..rrr......-...........T",
-  "T..www......-...........T",
+  "T..www......-...5.......T", // 8  卖水的婶婶
   "T..wdw......-...........T",
-  "T...3.......-...........T", // 10 老师
-  "T...........-...........T",
+  "T...........-...........T", // 10 （老师已移入学堂）
+  "T...........-.......6...T", // 11 朵朵
   "T....T......-......T....T",
-  "T...........-...........T",
+  "T......7....-....8......T", // 13 老爷爷 / 石头
   "TTTTTfffffff-fffffffTTTTT", // 14 村口
   "k,,,,,,,,,,,,,,,,,,,,,,,k", // 15 沙漠入口
   "k,,,,,,,,,,,,,,,,,,,,,,,k",
@@ -26,7 +26,7 @@ const MAP = [
   "k,,,,,,,,k,,,,,k,,,,,,,,k",
   "k,,,,,,,,k,,,,,k,,,,,,,,k",
   "k,,,,,,,,,,,,,,k,,,,,,,,k", // 20 ← 左支路开口
-  "k,,,,,,,,k,,,,,k,,,,,,,,k",
+  "k,,,,,9,,k,,,,,k,,,,,,,,k", // 21 沙漠旅人
   "k,,p,,,,,k,,,,,k,,,,,,,,k", // 22 碎片
   "k,,,,,,,,k,,,,,k,,,,,,,,k",
   "k,,,,c,,,k,,,,,k,,,,,,,,k", // 24 宝箱
@@ -41,7 +41,7 @@ const MAP = [
   "kkkkkkkkkk,,,,,kkkkkkkkkk", // 33 封住右支路
   "k,,,,,,,,k,,,,,k,,,,,,,,k",
   "k,,,,,,,,,,,,,,k,,,,,,,,k", // 35 ← 左支路2开口
-  "k,,,,,,,,k,,,,,k,,,,,,,,k",
+  "k,,,,b,,,k,,,,,k,,,,,,,,k", // 36 朵朵的作业本
   "k,,h,,,,,k,,,,,k,,,,,,,,k", // 37 隐藏点(放大镜)
   "k,,,,,,,,k,,,,,k,,,,,,,,k",
   "k,,,,,,h,k,,,,,k,,,,,,,,k", // 39 隐藏点(放大镜)
@@ -65,7 +65,7 @@ const MAP = [
   "kkkkkkkkkkkkkkkkkkkkkkkkk", // 57
 ];
 
-const BLOCK_CHARS = 'TrwdfkCXBGD';
+const BLOCK_CHARS = 'TrwdfkCXBGD';   // NPC(1-9) 与 b 由代码另行标记为障碍
 
 // 数值经 balance_sim.js 验证：等级墙成立，且堆装备无法绕过
 const ENEMIES = {
@@ -165,6 +165,100 @@ const FRAGMENTS = [
   { where:'隐藏处 · 需放大镜', text:'第七页：\n「藏完那天下午，\n我一个人在沙丘上坐到天黑。」' },
   { where:'隐藏处 · 需放大镜', text:'第八页：\n「我开始盼着下雨。\n下雨就不用去学堂了。」' },
 ];
+
+// ================= NPC =================
+// 每个 NPC 必须有：名字、一句能记住的性格、随进度变化的台词。
+// tex 复用村民贴图的三种配色。
+const NPCS = {
+  '1': { name:'村长',       tex:'npc_elder',    role:'elder' },
+  '2': { name:'商人',       tex:'npc_merchant', role:'shop' },
+  '3': { name:'老师',       tex:'npc_teacher',  role:'teacher' },
+  '4': { name:'铁匠老王',   tex:'npc_smith',    role:'clue', clue:'code1' },
+  '5': { name:'卖水的婶婶', tex:'npc_aunt',     role:'clue', clue:'code2' },
+  '6': { name:'朵朵',       tex:'npc_girl',     role:'quest' },
+  '7': { name:'守林的爷爷', tex:'npc_grandpa',  role:'lore' },
+  '8': { name:'石头',       tex:'npc_boy',      role:'chat' },
+  '9': { name:'沙漠旅人',   tex:'npc_traveler', role:'clue', clue:'bridge' },
+};
+
+// ================= 线索 =================
+// 线索必须是解谜的必需品，不能是可有可无的提示。
+// lock 指明这条线索服务于哪个锁；ask 是 NPC 用题目形式说出来的话；answer 是算出来的结果。
+const CLUES = {
+  code1:  { lock:'chest3', from:'铁匠老王',   ask:'口令第一个数？二三得几，你自己算。',
+            answer:6,  note:'口令第1个数 = 二三得几' },
+  code2:  { lock:'chest3', from:'卖水的婶婶', ask:'第二个数嘛……二的四倍。哎哟我这记性。',
+            answer:8,  note:'口令第2个数 = 二的四倍' },
+  code3:  { lock:'chest3', from:'朵朵',       ask:'谢谢你！第三个数是——五五二十五里的那个五！',
+            answer:5,  note:'口令第3个数 = 五五二十五里的五' },
+  bridge: { lock:'lore',   from:'沙漠旅人',   ask:'沙子里有几处颜色不一样。没有放大镜是看不出来的。',
+            answer:null, note:'沙漠里有隐藏处，需要放大镜' },
+};
+
+// ================= 宝箱锁 =================
+// 原则：短(10-30秒)、杂(不重复)、无惩罚(随便重来)。锁的类型显示在箱子上，孩子才有预期。
+// kind: calc算式锁 / balance天平锁 / code口令锁(需线索)
+const CHEST_LOCKS = [
+  { kind:'calc',    icon:'🔢', hint:'箱盖上刻着一道题' },
+  { kind:'balance', icon:'⚖️', hint:'箱盖上是一架天平，要找出相等的那个' },
+  { kind:'code',    icon:'🔒', hint:'三个数字轮盘。\n村里有人知道口令。', clues:['code1','code2','code3'] },
+];
+
+// ================= 室内 =================
+// 图例: W墙 F地板 D出口(门) N屋主 u柜子 t桌子 p盆栽 B床
+// 村里三栋房子，门口的 NPC 改成住在里面。柜子可以翻，翻到什么是随机的。
+const HOUSES = {
+  // 门在地图上的坐标 → 室内
+  '4,4':  { name:'村长家', owner:'1', rows:[
+    "WWWWWWWWW",
+    "WFuFFFuFW",
+    "WFFFFFFFW",
+    "WFtFNFtFW",
+    "WFFFFFFFW",
+    "WBFFFFFpW",
+    "WFFFDFFFW",
+    "WWWWWWWWW",
+  ]},
+  '18,4': { name:'商人家', owner:'2', rows:[
+    "WWWWWWWWW",
+    "WuuFFFuuW",
+    "WFFFFFFFW",
+    "WFFFNFFFW",
+    "WFtFFFtFW",
+    "WpFFFFFBW",
+    "WFFFDFFFW",
+    "WWWWWWWWW",
+  ]},
+  '4,9':  { name:'学堂',   owner:'3', rows:[
+    "WWWWWWWWW",
+    "WFuFFFuFW",
+    "WtFtFtFtW",
+    "WFFFNFFFW",
+    "WtFtFtFtW",
+    "WpFFFFFpW",
+    "WFFFDFFFW",
+    "WWWWWWWWW",
+  ]},
+};
+const HOUSE_BLOCK = 'WNutpB';
+
+// 翻柜子/桌子/盆栽能翻到什么。空手率要高，翻到东西才有惊喜
+const SEARCH_LOOT = [
+  { w:34, kind:'none',   msgs:['空的。', '什么也没有。', '只有灰尘。', '一只小虫子跑掉了。'] },
+  { w:22, kind:'gold',   min:3,  max:12,  msg:'找到了 💰{n} 金币！' },
+  { w:14, kind:'potion', msg:'找到了一瓶【药水】！' },
+  { w:8,  kind:'ether',  msg:'找到了一瓶【魔法药水】！' },
+  { w:10, kind:'scroll', msg:'找到了一张【提示卷轴】！' },
+  { w:8,  kind:'gold',   min:20, max:45,  msg:'哇，压在最底下的 💰{n} 金币！' },
+  { w:4,  kind:'herb',   msg:'找到了一株【知识草】。\n嚼一嚼，MP 全满了！' },
+];
+
+function rollLoot() {
+  const total = SEARCH_LOOT.reduce((s, l) => s + l.w, 0);
+  let r = irnd(1, total);
+  for (const l of SEARCH_LOOT) { r -= l.w; if (r <= 0) return l; }
+  return SEARCH_LOOT[0];
+}
 
 // 宝箱内容（按地图上从上到下的顺序）
 const CHESTS = [
@@ -344,7 +438,31 @@ function chineseQ() {
   return bankQ(pool[irnd(0, pool.length - 1)]);
 }
 
+// 天平锁专用：左边一个算式，四个选项里选出得数相等的那个（等式概念）
+function balanceQ() {
+  const a = irnd(2, 9), b = irnd(2, 9), c = a * b;
+  // 正确项：另一个得数相同的算式，或加法表达
+  const pairs = [];
+  for (let i = 2; i <= 9; i++) if (c % i === 0 && c / i >= 2 && c / i <= 9 && i !== a) pairs.push([i, c / i]);
+  const right = pairs.length ? `${pairs[0][0]} × ${pairs[0][1]}` : `${c - 10} + 10`;
+  const wrong = new Set();
+  while (wrong.size < 3) {
+    const d = c + (Math.random() < 0.5 ? 1 : -1) * irnd(1, 8);
+    if (d === c || d < 2) continue;
+    const f = [];
+    for (let i = 2; i <= 9; i++) if (d % i === 0 && d / i >= 2 && d / i <= 9) f.push([i, d / i]);
+    wrong.add(f.length ? `${f[0][0]} × ${f[0][1]}` : `${d - 1} + 1`);
+  }
+  return {
+    text: `天平左边是  ${a} × ${b}\n哪一个和它一样重？`,
+    options: shuffle([right, ...wrong]),
+    answer: right,
+    tip: `${a}×${b}=${c}，${right} 也等于 ${c}`,
+  };
+}
+
 function getQuestion(type) {
+  if (type === 'balance') return balanceQ();
   if (type === 'mixed') type = ['mult', 'addsub', 'chinese'][irnd(0, 2)];
   if (type === 'mult') return multQ();
   if (type === 'addsub') return addsubQ();
@@ -354,5 +472,6 @@ function getQuestion(type) {
 if (typeof module !== 'undefined') {
   module.exports = { MAP, MAPW, MAPH, ENEMIES, SPAWNS, GEAR, SLOTS, SHOP_GEAR, SPELLS, spellsAt,
                      FRAGMENTS, CHESTS, SOKOBAN, PLAYER_START, REVENGE_TILE,
-                     getQuestion, multQ, addsubQ, chineseQ, numCN, CN };
+                     NPCS, CLUES, CHEST_LOCKS, TOTAL_FRAGS, HOUSES, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
+                     getQuestion, multQ, addsubQ, chineseQ, balanceQ, numCN, CN };
 }

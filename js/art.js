@@ -191,6 +191,73 @@ const SPRITES = {
       "................",
     ],
   },
+  spider: {
+    p: { d:'#4a3a6a', l:'#7a5ec8', w:'#ffffff', k:'#111111', y:'#f4c542' },
+    r: [
+      "................",
+      "..d..........d..",
+      "...d........d...",
+      "....dddddddd....",
+      "...dllllllllld..",
+      "..dlwkllllwkld..",
+      "..dllllllllllld.",
+      ".dllllyyyylllld.",
+      ".dlllllllllllld.",
+      "..dlllllllllld..",
+      "...dddddddddd...",
+      "..d..d....d..d..",
+      ".d...d....d...d.",
+      "d....d....d....d",
+      "................",
+      "................",
+    ],
+  },
+  owl: {
+    p: { b:'#8a6a3a', l:'#c8a878', w:'#ffffff', k:'#111111', y:'#f4c542' },
+    r: [
+      "................",
+      "...bb......bb...",
+      "...bbb....bbb...",
+      "...bbbbbbbbbb...",
+      "..bbllllllllbb..",
+      "..blwwwwwwwwlb..",
+      "..blwkwwwwkwlb..",
+      "..bllwwyywwllb..",
+      "..bllllyylllllb.",
+      "..bbllllllllbb..",
+      "...bbllllllbb...",
+      "...bbbllllbbb...",
+      "....bbbbbbbb....",
+      ".....yy..yy.....",
+      "................",
+      "................",
+    ],
+  },
+  boss2: {
+    p: { g:'#d88fb0', d:'#a05a7a', w:'#ffffff', k:'#111111', y:'#f4c542', c:'#f7e0a0' },
+    r: [
+      "......gggggggg......",
+      ".....gggggggggg.....",
+      "....gggggggggggg....",
+      "....ggwkggggwkgg....",
+      "....gggggggggggg....",
+      "....ggggddddgggg....",
+      ".....gggggggggg.....",
+      "...cggggggggggggc...",
+      "..cccggggggggggccc..",
+      "..cccgggyyyygggccc..",
+      "...ccggggyyggggcc...",
+      "....gggggggggggg....",
+      "....gggggggggggg....",
+      "....ggg......ggg....",
+      "....ggg......ggg....",
+      "....ddd......ddd....",
+      "....ddd......ddd....",
+      "...dddd......dddd...",
+      "....................",
+      "....................",
+    ],
+  },
   boss: {
     p: { c:'#c89b5a', d:'#8a6534', y:'#f4c542', k:'#232323', r:'#b04040' },
     r: [
@@ -386,6 +453,41 @@ function makeTextures(scene) {
   ln.fillStyle(hexInt('#8a5a24'), 1); ln.fillRect(9, 9, 2, 6);
   ln.generateTexture('lens', 16, 16);
   ln.destroy();
+
+  // ---- 第二章：石回廊 ----
+  makeTile(scene, 't_stone', '#9a9a8a', g => {
+    g.fillStyle(hexInt('#8a8a7a'), 1);
+    g.fillRect(0, 0, 16, 1); g.fillRect(0, 8, 16, 1);
+    g.fillRect(0, 0, 1, 8); g.fillRect(8, 8, 1, 8);
+    dots(g, '#a8a898', [[4,4],[12,12],[3,11],[13,3]]);
+  });
+  makeTile(scene, 't_swall', '#5a5a4e', g => {
+    g.fillStyle(hexInt('#6e6e60'), 1); g.fillRect(1, 1, 14, 6); g.fillRect(1, 9, 14, 6);
+    dots(g, '#4a4a40', [[3,4],[11,12]]);
+  });
+  makeTile(scene, 't_pillar', '#9a9a8a', g => {
+    g.fillStyle(hexInt('#c8c8b8'), 1); g.fillRect(3, 1, 10, 14);
+    g.fillStyle(hexInt('#8a8a7a'), 1);
+    g.fillRect(3, 1, 10, 2); g.fillRect(3, 13, 10, 2);
+    g.fillRect(6, 3, 1, 10); g.fillRect(9, 3, 1, 10);
+  });
+  makeTile(scene, 't_water', '#3a6fa8', g => {
+    g.fillStyle(hexInt('#4a86c8'), 1); g.fillRect(0, 2, 16, 3); g.fillRect(0, 9, 16, 3);
+    dots(g, '#7ab8e8', [[3,3],[11,10],[6,4],[13,11]]);
+  });
+  // 糖果（分糖机关用）
+  const cd = scene.make.graphics({ x: 0, y: 0, add: false });
+  cd.fillStyle(hexInt('#f06a8a'), 1); cd.fillCircle(8, 8, 5);
+  cd.fillStyle(hexInt('#ffb0c4'), 1); cd.fillCircle(6, 6, 2);
+  cd.fillStyle(hexInt('#c04a68'), 1); cd.fillRect(1, 7, 3, 2); cd.fillRect(12, 7, 3, 2);
+  cd.generateTexture('candy', 16, 16);
+  cd.destroy();
+  // 盘子
+  makeTile(scene, 't_plate2', '#6b6b78', g => {
+    g.fillStyle(hexInt('#d8d8e0'), 1); g.fillCircle(8, 9, 6);
+    g.fillStyle(hexInt('#f0f0f8'), 1); g.fillCircle(8, 9, 4);
+    g.fillStyle(hexInt('#a8a8b8'), 1); g.fillRect(2, 12, 12, 1);
+  });
 
   // ---- 室内 ----
   makeTile(scene, 't_floor', '#c8a878', g => {

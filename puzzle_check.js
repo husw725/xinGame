@@ -82,3 +82,27 @@ console.assert(steps.every(s => s > 0), '有关卡无解');
 
 if (fail) { console.log(`\n✗ ${fail} 关有问题，必须修`); process.exit(1); }
 console.log('\n✅ 三关全部可解，孩子不会被永久卡住');
+
+// ---- 分糖机关（第2章）----
+const { CH2_CANDY } = require('./js/data.js');
+console.log('\n=== 分糖机关可解性验证 ===\n');
+let cbad = 0;
+CH2_CANDY.forEach((lv, i) => {
+  const q = Math.floor(lv.total / lv.plates), r = lv.total % lv.plates;
+  const ok = lv.plates >= 2 && lv.total > 0 && q >= 1 && r < lv.plates && q * lv.plates + r === lv.total;
+  console.log(`${ok ? '✓' : '✗'} 第${i + 1}间「${lv.name}」 ${lv.total} ÷ ${lv.plates} = ${q} …… ${r}`);
+  if (!ok) { console.log(`    ✗ 数值不合法`); cbad++; }
+  if (q < 1)  { console.log('    ✗ 每盘不足1颗，孩子会困惑'); cbad++; }
+  if (q > 9)  { console.log('    ✗ 每盘超过9颗，超出表内除法范围'); cbad++; }
+  if (lv.plates > 6) { console.log('    ✗ 盘子太多，屏幕摆不下'); cbad++; }
+  if (lv.total > 30) { console.log('    ✗ 糖太多，一颗颗点太累'); cbad++; }
+});
+// 难度应递增：余数从0开始教
+if (CH2_CANDY[0].total % CH2_CANDY[0].plates !== 0) {
+  console.log('✗ 第一间应该正好分完（先教平均分，再教余数）'); cbad++;
+}
+if (CH2_CANDY.some((l, i) => i > 0 && l.total % l.plates === 0)) {
+  console.log('⚠ 后面几间最好都有余数，才练得到余数概念');
+}
+if (cbad) { console.log(`\n✗ 分糖机关 ${cbad} 处问题`); process.exit(1); }
+console.log('\n✅ 分糖机关三间全部可解，且难度递增（先整除，后余数）');

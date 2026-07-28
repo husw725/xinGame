@@ -12,6 +12,7 @@ function defaultState() {
       eq: { weapon: 'pencil', head: null, shield: null, boots: 'cloth_b', charm: null },
       bag: [], // 备用装备
     },
+    chapter: 0,
     flags: { intro: false, boss: false, puzzle: false },
     clues: [],    // 已记下的线索 key
     quest: {},    // 支线状态：dodo = null/'taken'/'found'/'done'
@@ -26,7 +27,7 @@ function defaultState() {
   };
 }
 let GS = defaultState();
-const SAVE_KEY = 'xinGame_save_v3';
+const SAVE_KEY = 'xinGame_save_v4';
 function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(GS)); } catch (e) {} }
 function loadGame() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
 function expNeed(lv) { return 20 + lv * 20; }
@@ -80,6 +81,7 @@ class Boot extends Phaser.Scene {
   constructor() { super('Boot'); }
   create() {
     makeTextures(this);
+    loadChapter(GS.chapter || 0);
     this.scene.start('Title');
   }
 }
@@ -301,6 +303,7 @@ class World extends Phaser.Scene {
   constructor() { super('World'); }
 
   create() {
+    loadChapter(GS.chapter || 0);
     this.moving = false;
     this.inBattle = false;
     this.held = null;
@@ -312,7 +315,8 @@ class World extends Phaser.Scene {
     this.mobs = [];
 
     // --- 地图 ---
-    const TILE_TEX = { '.': 't_grass', ',': 't_sand', '-': 't_path', 'T': 't_tree', 'C': 't_cactus', 'k': 't_rock', 'f': 't_fence', 'r': 't_roof', 'w': 't_wall', 'd': 't_door' };
+    const TILE_TEX = { '.': 't_grass', ',': 't_sand', '-': 't_path', 'T': 't_tree', 'C': 't_cactus', 'k': 't_rock', 'f': 't_fence', 'r': 't_roof', 'w': 't_wall', 'd': 't_door',
+                       's': 't_stone', 'W': 't_swall', 'P': 't_pillar', '~': 't_water' };
     this.chests = {};    // "x,y" -> 编号
     this.frags = {};     // "x,y" -> 碎片编号
     this.hidden = {};    // "x,y" -> 碎片编号（需放大镜）
@@ -323,7 +327,7 @@ class World extends Phaser.Scene {
         const ch = MAP[y][x];
         const key = x + ',' + y;
         let tex = TILE_TEX[ch];
-        if (!tex) tex = y < 15 ? 't_grass' : 't_sand'; // 特殊标记先铺底
+        if (!tex) tex = GS.chapter === 0 ? (y < 15 ? 't_grass' : 't_sand') : 't_stone';
         this.add.image(x * TILE + 16, y * TILE + 16, tex).setScale(2);
         if (BLOCK_CHARS.includes(ch)) this.blocked.add(key);
         if (ch === 'd') this.doors.add(key);
@@ -347,7 +351,7 @@ class World extends Phaser.Scene {
           const n = 5 + hidN++;   // 隐藏处放的是第6~8页
           if (!GS.frags.includes(n)) {
             this.hidden[key] = n;
-            if (GS.tools.includes('lens')) {   // 有放大镜才看得见
+            if (GS.tools.includes(CHAPTER.hiddenTool)) {   // 有对应工具才看得见
               const spr = this.add.image(x * TILE + 16, y * TILE + 16, 'sparkle').setScale(2).setDepth(4);
               this.tweens.add({ targets: spr, alpha: 0.3, scale: 1.6, duration: 600, yoyo: true, repeat: -1 });
               this.hidden[key + '_spr'] = spr;
@@ -381,11 +385,12 @@ class World extends Phaser.Scene {
     }
 
     // --- 水晶 & 魔王 ---
-    this.bossTile = { x: 12, y: 55 };
+    this.bossTile = CHAPTER.bossTile;
+    const ct = CHAPTER.crystalTile;
     if (!GS.flags.boss) {
-      this.crystal = this.add.image(12 * TILE + 16, 54 * TILE + 16, 'crystal').setScale(2).setDepth(5);
+      this.crystal = this.add.image(ct.x * TILE + 16, ct.y * TILE + 16, 'crystal').setScale(2).setDepth(5);
       this.tweens.add({ targets: this.crystal, alpha: 0.5, duration: 700, yoyo: true, repeat: -1 });
-      this.bossSprite = this.add.image(12 * TILE + 16, 55 * TILE + 10, 'boss').setScale(2.5).setDepth(6);
+      this.bossSprite = this.add.image(this.bossTile.x * TILE + 16, this.bossTile.y * TILE + 10, ENEMIES[CHAPTER.boss].tex).setScale(2.5).setDepth(6);
     }
 
     // --- 小怪 ---
@@ -514,7 +519,7 @@ class World extends Phaser.Scene {
     }
     if (this.frags[key] !== undefined) { this.pickFrag(key, this.frags[key], false); return true; }
     if (this.hidden[key] !== undefined) {
-      if (!GS.tools.includes('lens')) { this.dialog.say(['这里的沙子好像有点不一样……\n可是什么也看不出来。']); return true; }
+      if (!GS.tools.includes(CHAPTER.hiddenTool)) { this.dialog.say([GS.chapter === 0 ? '这里的沙子好像有点不一样……\n可是什么也看不出来。' : '墙缝里好像卡着什么……\n可是手伸不进去。']); return true; }
       this.pickFrag(key, this.hidden[key], true); return true;
     }
     if (ch === 'd') {
@@ -531,9 +536,12 @@ class World extends Phaser.Scene {
       return true;
     }
     if (!GS.flags.boss && nx === this.bossTile.x && ny === this.bossTile.y) {
-      this.dialog.say(['哞——想要水晶？\n先把乘法口诀背熟再来吧，小豆丁！'], () => {
-        this.dialog.choice('要挑战口诀骆驼王吗？', ['挑战！', '先撤退…'], i => {
-          if (i === 0) this.startBattle(ENEMIES.boss, { boss: true });
+      const bn = ENEMIES[CHAPTER.boss].name;
+      this.dialog.say([GS.chapter === 0
+        ? '哞——想要水晶？\n先把乘法口诀背熟再来吧，小豆丁！'
+        : '想过去？先证明你会分东西。\n分不匀的人，我不放行。'], () => {
+        this.dialog.choice(`要挑战${bn}吗？`, ['挑战！', '先撤退…'], i => {
+          if (i === 0) this.startBattle(ENEMIES[CHAPTER.boss], { boss: true });
         });
       }, '口诀骆驼王');
       return true;
@@ -587,7 +595,7 @@ class World extends Phaser.Scene {
     }
     if (this.frags[key] !== undefined) { this.pickFrag(key, this.frags[key], false); return; }
     if (this.hidden[key] !== undefined) {
-      if (!GS.tools.includes('lens')) { this.dialog.say(['这里的沙子好像有点不一样……\n可是什么也看不出来。']); return; }
+      if (!GS.tools.includes(CHAPTER.hiddenTool)) { this.dialog.say([GS.chapter === 0 ? '这里的沙子好像有点不一样……\n可是什么也看不出来。' : '墙缝里好像卡着什么……\n可是手伸不进去。']); return; }
       this.pickFrag(key, this.hidden[key], true); return;
     }
     // 门：走进去就进屋，不用按 A
@@ -753,7 +761,7 @@ class World extends Phaser.Scene {
   }
 
   showDex() {
-    const all = ['slime', 'imp', 'wraith', 'revenge', 'boss'];
+    const all = GS.chapter === 0 ? ['slime','imp','wraith','revenge','boss'] : ['spider','imp2','owl','revenge','boss2'];
     const lines = [`图鉴 ${GS.dex.length}/${all.length}`];
     all.forEach(k => {
       const e = ENEMIES[k];
@@ -1144,7 +1152,7 @@ class World extends Phaser.Scene {
         this.held = null; this.queued = null;
         const next = SOKOBAN.findIndex((_, k) => !GS.rooms.includes(k));
         this.cameras.main.resetFX();
-        this.scene.launch('Puzzle', { room: next });
+        this.scene.launch(CHAPTER.puzzle.kind === 'candy' ? 'Candy' : 'Puzzle', { room: next });
         this.scene.sleep();
       });
     });
@@ -1219,16 +1227,18 @@ class World extends Phaser.Scene {
       }
       if (r.boss) {
         GS.flags.boss = true;
-        if (!GS.tools.includes('lens')) GS.tools.push('lens');   // 探索工具：放大镜
+        if (!GS.tools.includes(CHAPTER.tool)) GS.tools.push(CHAPTER.tool);   // 本章探索工具
         saveGame();
         this.bossSprite.destroy();
         this.dialog.say([
           '口诀骆驼王倒下了，眼里的红光消失了……',
           '骆驼王：谢谢你……我想起来了，\n我本来是守护口诀的精灵啊！',
           '你拿到了第一颗【记忆水晶】！',
-          '骆驼王：这个也给你吧。\n🔍 得到了【放大镜】！',
-          '「沙漠里有几处沙子不太一样，\n用放大镜看看，会有发现的。」',
-          `记忆碎片还差 ${8 - GS.frags.length} 页。\n回头去找找吧。`,
+          `这个也给你吧。\n${CHAPTER.toolName} 到手了！`,
+          GS.chapter === 0
+            ? '「沙漠里有几处沙子不太一样，\n用放大镜看看，会有发现的。」'
+            : '「回廊的墙缝里卡着东西。\n用钩爪就够得着了。」',
+          `本章记忆碎片还差 ${8 - GS.frags.length} 页。\n回头去找找吧。`,
         ], () => this.scene.start('Clear'), '');
         this.crystal && this.tweens.add({ targets: this.crystal, y: this.crystal.y - 60, alpha: 0, duration: 1500, onComplete: () => this.crystal.destroy() });
         this.updateHUD();
@@ -2012,18 +2022,175 @@ class Puzzle extends Phaser.Scene {
   }
 }
 
+// ============ 分糖机关（第2章）============
+// 把"平均分"从算式变成手上的动作：点盘子放糖，每盘必须一样多，
+// 分不完的留在中间 —— 那就是余数。
+class Candy extends Phaser.Scene {
+  constructor() { super('Candy'); }
+  init(data) { this.roomIdx = data.room || 0; }
+
+  create() {
+    const lv = SOKOBAN[this.roomIdx];      // loadChapter 已把本章谜题装进 SOKOBAN
+    this.lv = lv;
+    this.pool = lv.total;                  // 还在中间没分出去的
+    this.plates = Array(lv.plates).fill(0);
+    this.done = false;
+
+    this.add.rectangle(W / 2, H / 2, W, H, 0x1a1a22);
+    this.add.text(W / 2, 44, lv.name, { fontSize: '25px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(W / 2, 80, `石室 ${this.roomIdx + 1} / ${SOKOBAN.length}`, { fontSize: '17px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
+    this.add.text(W / 2, 118, `${lv.total} 颗糖，${lv.plates} 个盘子`, { fontSize: '21px', fontFamily: FONT, color: '#fff2c0' }).setOrigin(0.5);
+
+    // 中间的糖堆
+    this.add.rectangle(W / 2, 200, 400, 96, 0x2a2a34).setStrokeStyle(3, 0xf4e6c0);
+    this.add.text(W / 2, 165, '还没分的糖', { fontSize: '16px', fontFamily: FONT, color: '#9aa2bd' }).setOrigin(0.5);
+    this.poolText = this.add.text(W / 2, 208, '', { fontSize: '30px', fontFamily: FONT, color: '#f06a8a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.poolIcons = this.add.container(0, 0);
+
+    // 盘子：点一下放一颗，再点盘子上的糖会收回
+    this.plateUI = [];
+    const n = lv.plates;
+    const gapX = Math.min(112, 420 / n);
+    lv.plates && this.plates.forEach((_, i) => {
+      const x = W / 2 + (i - (n - 1) / 2) * gapX;
+      const y = 340;
+      const img = this.add.image(x, y, 't_plate2').setDisplaySize(gapX - 8, gapX - 8).setInteractive({ useHandCursor: true });
+      const cnt = this.add.text(x, y + 4, '0', { fontSize: '26px', fontFamily: FONT, color: '#3a2410', fontStyle: 'bold' }).setOrigin(0.5);
+      const lbl = this.add.text(x, y + gapX / 2 + 4, `第${i + 1}盘`, { fontSize: '14px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
+      img.on('pointerdown', () => this.put(i));
+      this.plateUI.push({ img, cnt, lbl });
+    });
+
+    this.tip = this.add.text(W / 2, 432, '点盘子放一颗糖，点满了再点会收回来',
+      { fontSize: '17px', fontFamily: FONT, color: '#c8d4f0', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5);
+
+    makeButton(this, 130, 530, 210, 62, '↺ 全部收回', () => {
+      if (this.done) return;
+      this.pool = lv.total; this.plates.fill(0); this.refresh();
+      this.tip.setText('都收回来了，重新分吧。');
+    }, { fontSize: '19px', color: 0x6b4a2c });
+    makeButton(this, 350, 530, 210, 62, '💡 求助', () => {
+      const q = Math.floor(lv.total / lv.plates), r = lv.total % lv.plates;
+      this.tip.setText(`${lv.hint}\n（每盘 ${q} 颗，中间会剩 ${r} 颗）`);
+    }, { fontSize: '19px', color: 0x3a6b45 });
+    makeButton(this, W / 2, 618, 300, 66, '✓ 分好了', () => this.check(), { fontSize: '22px' });
+    makeButton(this, W / 2, 700, 240, 60, '🚪 离开', () => this.leave(), { fontSize: '19px' });
+
+    this.refresh();
+  }
+
+  put(i) {
+    if (this.done) return;
+    if (this.pool > 0) { this.pool--; this.plates[i]++; }
+    else if (this.plates[i] > 0) { this.plates[i]--; this.pool++; }   // 没糖了就收回
+    this.refresh();
+  }
+
+  refresh() {
+    this.poolText.setText('🍬 '.repeat(Math.min(this.pool, 12)).trim() + (this.pool > 12 ? ` +${this.pool - 12}` : '') + `   （${this.pool} 颗）`);
+    this.plateUI.forEach((p, i) => p.cnt.setText(String(this.plates[i])));
+  }
+
+  check() {
+    if (this.done) return;
+    const lv = this.lv;
+    const q = Math.floor(lv.total / lv.plates), r = lv.total % lv.plates;
+    const allSame = this.plates.every(v => v === this.plates[0]);
+    if (!allSame) { this.tip.setText('每个盘子里要一样多才行。\n再看看哪盘多了、哪盘少了。'); return; }
+    if (this.plates[0] !== q || this.pool !== r) {
+      this.tip.setText(this.plates[0] < q
+        ? '还能再分一些 —— 中间剩的糖\n比盘子数还多，说明每盘还能加。'
+        : '分多了。中间的糖不够分了，\n说明每盘要少一点。');
+      return;
+    }
+    // 过关
+    this.done = true;
+    this.cameras.main.flash(300, 255, 240, 180);
+    if (!GS.rooms.includes(this.roomIdx)) GS.rooms.push(this.roomIdx);
+    const lines = [`${lv.total} ÷ ${lv.plates} = ${q}${r ? ' …… ' + r : ''}\n石门咔哒响了一声！`];
+    if (r === 0) lines.push('正好分完，一颗不剩。');
+    else lines.push(`每盘 ${q} 颗，中间剩下 ${r} 颗。\n剩下的这 ${r} 颗，就叫【余数】。`);
+    const rw = lv.reward;
+    if (rw.kind === 'gold') { GS.p.gold += rw.val; lines.push(`石台上有 💰${rw.val} 金币！`); }
+    else if (rw.kind === 'frag' && !GS.frags.includes(rw.idx)) {
+      GS.frags.push(rw.idx);
+      lines.push('地上有一页发黄的纸……', FRAGMENTS[rw.idx].text, `（本章记忆碎片 ${GS.frags.length}/8）`);
+    }
+    if (SOKOBAN.every((_, i) => GS.rooms.includes(i))) {
+      GS.flags.puzzle = true;
+      lines.push('三间石室都解开了！\n回廊尽头的大石门应该开了。');
+    }
+    saveGame();
+    this.panel(lines, () => {
+      const next = SOKOBAN.findIndex((_, i) => !GS.rooms.includes(i));
+      if (next >= 0) this.scene.restart({ room: next });
+      else this.leave();
+    });
+  }
+
+  panel(lines, cb) {
+    const bg = this.add.rectangle(W / 2, H / 2, 456, 320, 0x14182e, 0.97).setStrokeStyle(4, 0xf4e6c0).setDepth(100);
+    const txt = this.add.text(W / 2, H / 2 - 30, '', { fontSize: '20px', fontFamily: FONT, color: '#fff',
+      align: 'center', wordWrap: { width: 410 }, lineSpacing: 8 }).setOrigin(0.5).setDepth(101);
+    const q = lines.slice();
+    const btn = makeButton(this, W / 2, H / 2 + 110, 200, 56, '继续', () => {
+      if (q.length) { txt.setText(q.shift()); return; }
+      bg.destroy(); txt.destroy(); btn.destroy(); cb();
+    }, { fontSize: '20px' });
+    btn.bg.setDepth(101); btn.txt.setDepth(102);
+    txt.setText(q.shift());
+  }
+
+  leave() {
+    GS.fromPuzzle = true;
+    saveGame();
+    this.scene.stop();
+    this.scene.wake('World');
+  }
+}
+
 // ============ 通关 ============
 class Clear extends Phaser.Scene {
   constructor() { super('Clear'); }
   create() {
+    const c = CHAPTER;
+    const hasNext = GS.chapter + 1 < CHAPTERS.length;
     this.add.rectangle(W / 2, H / 2, W, H, 0x1a1f3a);
-    this.add.image(W / 2, 240, 'crystal').setScale(8);
-    this.tweens.add({ targets: this.children.list[1], angle: 360, duration: 6000, repeat: -1 });
-    this.add.text(W / 2, 400, '第一章 完！', { fontSize: '44px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
-    this.add.text(W / 2, 470, '你夺回了第一颗记忆水晶\n乘法口诀沙漠恢复了平静', { fontSize: '22px', fontFamily: FONT, color: '#c8d4f0', align: 'center', lineSpacing: 10 }).setOrigin(0.5);
-    this.add.text(W / 2, 570, `勇者等级：Lv${GS.p.lv}\n金币：💰${GS.p.gold}`, { fontSize: '20px', fontFamily: FONT, color: '#8090b8', align: 'center', lineSpacing: 8 }).setOrigin(0.5);
-    this.add.text(W / 2, 660, '（下一章：汉字森林 敬请期待）', { fontSize: '18px', fontFamily: FONT, color: '#667' }).setOrigin(0.5);
-    makeButton(this, W / 2, 750, 280, 64, '回到村庄', () => this.scene.start('World'));
+    const gem = this.add.image(W / 2, 210, 'crystal').setScale(8);
+    this.tweens.add({ targets: gem, angle: 360, duration: 6000, repeat: -1 });
+    this.add.text(W / 2, 350, `第${c.n === 1 ? '一' : '二'}章 完！`,
+      { fontSize: '42px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(W / 2, 415, `你夺回了第 ${c.n} 颗记忆水晶\n${c.name}恢复了平静`,
+      { fontSize: '21px', fontFamily: FONT, color: '#c8d4f0', align: 'center', lineSpacing: 10 }).setOrigin(0.5);
+    this.add.text(W / 2, 505, `勇者 Lv${GS.p.lv}　💰${GS.p.gold}\n本章碎片 ${GS.frags.length}/8　图鉴 ${GS.dex.length}`,
+      { fontSize: '19px', fontFamily: FONT, color: '#8090b8', align: 'center', lineSpacing: 8 }).setOrigin(0.5);
+
+    if (GS.frags.length < 8) {
+      this.add.text(W / 2, 580, `还有 ${8 - GS.frags.length} 页日记没找到\n（回本章用${c.toolName}再找找）`,
+        { fontSize: '17px', fontFamily: FONT, color: '#ffb347', align: 'center', lineSpacing: 6 }).setOrigin(0.5);
+    }
+
+    makeButton(this, W / 2, 660, 300, 64, '↩️ 回本章继续探索', () => this.scene.start('World'), { fontSize: '20px' });
+    if (hasNext) {
+      makeButton(this, W / 2, 745, 300, 64, `➡️ 前往第 ${GS.chapter + 2} 章`, () => this.nextChapter(), { fontSize: '20px', color: 0x3a6b45 });
+    } else {
+      this.add.text(W / 2, 750, '（下一章敬请期待）', { fontSize: '17px', fontFamily: FONT, color: '#667' }).setOrigin(0.5);
+    }
+  }
+
+  // 进入下一章：本章进度归零，人物等级/装备/日记全部带走
+  nextChapter() {
+    const carried = GS.frags.length;
+    GS.chapter += 1;
+    GS.flags = { intro: true, boss: false, puzzle: false };
+    GS.frags = []; GS.chests = []; GS.locks = []; GS.rooms = [];
+    GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pool = [];
+    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.fromHouse = null;
+    loadChapter(GS.chapter);
+    GS.p.hp = GS.p.maxhp; GS.p.mp = GS.p.maxmp;
+    saveGame();
+    this.scene.stop('World');
+    this.scene.start('World');
   }
 }
 
@@ -2035,6 +2202,6 @@ window.game = new Phaser.Game({
   pixelArt: true,
   backgroundColor: '#000',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, World, Battle, Puzzle, House, Clear],
+  scene: [Boot, Title, World, Battle, Puzzle, Candy, House, Clear],
 });
 window.GS = GS;

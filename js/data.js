@@ -1,10 +1,10 @@
 // data.js — 地图 / 敌人 / 题库（人教版二升三）
-const TILE = 32, MAPW = 25, MAPH = 58;
+const TILE = 32;
 
 // 图例: T树 .草 -路 r屋顶 w墙 d门 f栅栏 k岩石 ,沙 C仙人掌
 //       c宝箱 p记忆碎片 h隐藏点(需放大镜) D迷宫入口 G石门 X水晶 B魔王 1村长 2商人 3老师
 // 结构：村庄(0-14) → 沙漠主廊 x10-14，左右支路藏宝(15-46) → 迷宫+石门(47-51) → 魔王(52-57)
-const MAP = [
+const CH1_MAP = [
   "TTTTTTTTTTTTTTTTTTTTTTTTT", // 0
   "T...........-...........T",
   "T..rrr......-....rrr....T",
@@ -65,7 +65,7 @@ const MAP = [
   "kkkkkkkkkkkkkkkkkkkkkkkkk", // 57
 ];
 
-const BLOCK_CHARS = 'TrwdfkCXBGD';   // NPC(1-9) 与 b 由代码另行标记为障碍
+const BLOCK_CHARS = 'TrwdfkCXBGDWP~';   // NPC(1-9) 与 b 由代码另行标记为障碍
 
 // 数值经 balance_sim.js 验证：等级墙成立，且堆装备无法绕过
 const ENEMIES = {
@@ -75,6 +75,11 @@ const ENEMIES = {
   dummy:  { key:'dummy',  name:'训练木桩',   tex:'dummy',  hp:40, def:2, atk:0,  exp:0,  gold:0,  qtype:'mult', practice:true },
   revenge:{ key:'revenge',name:'怨念怪',     tex:'revenge',hp:36, def:3, atk:8,  exp:60, gold:16, qtype:'revenge' },
   boss:   { key:'boss',   name:'口诀骆驼王', tex:'boss',   hp:220,def:8, atk:16, exp:300,gold:150,qtype:'mult', boss:true },
+  // --- 第二章 ---
+  spider: { key:'spider', name:'除法蜘蛛',   tex:'spider', hp:104,def:8, atk:18, exp:64, gold:16, qtype:'divide' },
+  imp2:   { key:'imp2',   name:'余数小鬼',   tex:'imp',    hp:112,def:9, atk:19, exp:70, gold:18, qtype:'remainder' },
+  owl:    { key:'owl',    name:'量词猫头鹰', tex:'owl',    hp:100,def:8, atk:17, exp:62, gold:16, qtype:'liangci' },
+  boss2:  { key:'boss2',  name:'分糖巨人',   tex:'boss2',  hp:320,def:19,atk:28, exp:900,gold:420,qtype:'divide', boss:true },
 };
 
 // ================= 装备（DQ 逻辑：五部位，卖价 75%） =================
@@ -107,10 +112,15 @@ const GEAR = {
   abacus:   { slot:'charm',  name:'铜算盘',   buy:100, desc:'金币+20%', goldBonus:0.2 },
   dict:     { slot:'charm',  name:'字典护符', buy:160, desc:'语文题伤害+30%', boost:'chinese' },
   necklace: { slot:'charm',  name:'九九项链', buy:0,   desc:'数学题伤害+30%', boost:'math', treasure:true },
+  // --- 第二章新增 ---
+  tri_sword:{ slot:'weapon', name:'三角尺剑', atk:7,  buy:200, desc:'三个角都很锋利' },
+  abacus_s: { slot:'shield', name:'算盘盾',   def:5,  buy:260, desc:'珠子噼啪响，挡得住' },
+  divider:  { slot:'charm',  name:'分糖锦囊', buy:240, desc:'答对时额外回2点MP', mpBonus:2 },
+  hookband: { slot:'charm',  name:'钩爪腕带', buy:0,   desc:'金币+35%', goldBonus:0.35, treasure:true },
 };
 
 // 第1章商店卖什么（宝箱专属的不卖）
-const SHOP_GEAR = ['crayon','pen','cloth_h','leather_h','wood_s','iron_s','straw_b','wind_b','abacus','dict'];
+const CH1_SHOP = ['crayon','pen','cloth_h','leather_h','wood_s','iron_s','straw_b','wind_b','abacus','dict'];
 
 // ================= 魔法 =================
 // kind: heal治疗 / attack攻击(无视防御) / buff辅助 / field非战斗
@@ -134,7 +144,7 @@ function spellsAt(lv) {
   return Object.keys(SPELLS).filter(k => SPELLS[k].lv <= lv);
 }
 
-const SPAWNS = [
+const CH1_SPAWNS = [
   { k:'slime',  x:12, y:16 },
   { k:'slime',  x:11, y:19 },
   { k:'slime',  x:4,  y:21 },   // 左支路1
@@ -148,14 +158,14 @@ const SPAWNS = [
   { k:'imp',    x:20, y:43 },   // 右支路2
   { k:'wraith', x:12, y:48 },
 ];
-const REVENGE_TILE = { x:14, y:15 };
-const PLAYER_START = { x:12, y:12 };
+const CH1_REVENGE = { x:14, y:15 };
+const CH1_START = { x:12, y:12 };
 
 // ================= 记忆碎片（一本日记，全七章共 56 页） =================
 // 第一章只放第 1–8 页：建立同情，不给任何身份线索。
 // 许愿（第41-48页）和"陪我再学一次"（第56页）分别在第6章和终章 —— 提前给出会毁掉整条暗线。
 const TOTAL_FRAGS = 56;
-const FRAGMENTS = [
+const CH1_FRAGS = [
   { where:'左支路 · 沙地上',  text:'第一页：\n「今天又是最后一名。\n先生念名字的时候，我盯着桌子。」' },
   { where:'右支路 · 沙地上',  text:'第二页：\n「他们叫我笨蛋。\n我说我不是，可我说不出为什么。」' },
   { where:'迷宫第一间',       text:'第三页：\n「口诀我背了一百遍。\n昨天会，今天又忘了。」' },
@@ -169,7 +179,7 @@ const FRAGMENTS = [
 // ================= NPC =================
 // 每个 NPC 必须有：名字、一句能记住的性格、随进度变化的台词。
 // tex 复用村民贴图的三种配色。
-const NPCS = {
+const CH1_NPCS = {
   '1': { name:'村长',       tex:'npc_elder',    role:'elder' },
   '2': { name:'商人',       tex:'npc_merchant', role:'shop' },
   '3': { name:'老师',       tex:'npc_teacher',  role:'teacher' },
@@ -184,7 +194,7 @@ const NPCS = {
 // ================= 线索 =================
 // 线索必须是解谜的必需品，不能是可有可无的提示。
 // lock 指明这条线索服务于哪个锁；ask 是 NPC 用题目形式说出来的话；answer 是算出来的结果。
-const CLUES = {
+const CH1_CLUES = {
   code1:  { lock:'chest3', from:'铁匠老王',   ask:'口令第一个数？二三得几，你自己算。',
             answer:6,  note:'口令第1个数 = 二三得几' },
   code2:  { lock:'chest3', from:'卖水的婶婶', ask:'第二个数嘛……二的四倍。哎哟我这记性。',
@@ -198,7 +208,7 @@ const CLUES = {
 // ================= 宝箱锁 =================
 // 原则：短(10-30秒)、杂(不重复)、无惩罚(随便重来)。锁的类型显示在箱子上，孩子才有预期。
 // kind: calc算式锁 / balance天平锁 / code口令锁(需线索)
-const CHEST_LOCKS = [
+const CH1_LOCKS = [
   { kind:'calc',    icon:'🔢', hint:'箱盖上刻着一道题' },
   { kind:'balance', icon:'⚖️', hint:'箱盖上是一架天平，要找出相等的那个' },
   { kind:'code',    icon:'🔒', hint:'三个数字轮盘。\n村里有人知道口令。', clues:['code1','code2','code3'] },
@@ -207,7 +217,7 @@ const CHEST_LOCKS = [
 // ================= 室内 =================
 // 图例: W墙 F地板 D出口(门) N屋主 u柜子 t桌子 p盆栽 B床
 // 村里三栋房子，门口的 NPC 改成住在里面。柜子可以翻，翻到什么是随机的。
-const HOUSES = {
+const CH1_HOUSES = {
   // 门在地图上的坐标 → 室内
   '4,4':  { name:'村长家', owner:'1', rows:[
     "WWWWWWWWW",
@@ -261,7 +271,7 @@ function rollLoot() {
 }
 
 // 宝箱内容（按地图上从上到下的顺序）
-const CHESTS = [
+const CH1_CHESTS = [
   { kind:'gear',  key:'leather_h', msg:'找到了【皮帽】！' },
   { kind:'frag',  idx:4,           msg:'箱子里是一页发黄的纸……' },
   { kind:'gear',  key:'scholar_h', msg:'找到了传说中的【学士帽】！\n（商店买不到，经验+10%）' },
@@ -269,7 +279,7 @@ const CHESTS = [
 
 // ================= 推箱子迷宫（口诀箱） =================
 // 把写着正确得数的箱子推到对应口诀的凹槽上。'#'墙 '.'地面
-const SOKOBAN = [
+const CH1_SOKOBAN = [
   {
     name: '第一间 · 试试看',
     hint: '站在箱子的另一边，朝凹槽的方向走，就能把箱子推过去。',
@@ -461,17 +471,247 @@ function balanceQ() {
   };
 }
 
+// ---- 第二章题型：表内除法 / 有余数的除法 / 量词 ----
+function divideQ() {
+  const b = irnd(2, 9), q = irnd(2, 9), a = b * q;
+  const m = Math.min(b, q), M = Math.max(b, q);
+  return { text: `${a} ÷ ${b} = ?`, options: numOptions(q), answer: String(q),
+           tip: `想口诀：${CN[m]}${CN[M]}${a < 10 ? '得' + CN[a] : numCN(a)}，所以 ${a}÷${b}=${q}` };
+}
+
+function remainderQ() {
+  const b = irnd(3, 9);
+  const q = irnd(2, 8);
+  const r = irnd(1, b - 1);          // 余数一定小于除数
+  const a = b * q + r;
+  return { text: `${a} ÷ ${b} = ${q} …… ?\n（余数是几？）`, options: numOptions(r), answer: String(r),
+           tip: `${b}×${q}=${b*q}，${a}−${b*q}=${r}。余数一定比除数 ${b} 小` };
+}
+
+function liangciQ() {
+  const item = LIANG[irnd(0, LIANG.length - 1)];
+  return { text: item.t, options: shuffle([item.a, ...item.d]), answer: item.a,
+           tip: `应该说「${item.t.replace('（　）', item.a)}」` };
+}
+
 function getQuestion(type) {
-  if (type === 'balance') return balanceQ();
+  if (type === 'balance')   return balanceQ();
+  if (type === 'divide')    return divideQ();
+  if (type === 'remainder') return remainderQ();
+  if (type === 'liangci')   return liangciQ();
+  if (type === 'mixed2')    return [divideQ, remainderQ, liangciQ][irnd(0, 2)]();
   if (type === 'mixed') type = ['mult', 'addsub', 'chinese'][irnd(0, 2)];
   if (type === 'mult') return multQ();
   if (type === 'addsub') return addsubQ();
   return chineseQ();
 }
 
+
+
+
+// ============================================================
+// 第二章 · 除法回廊
+// 数学：表内除法、有余数的除法（二下核心）  语文：量词
+// ============================================================
+
+// 回廊行生成器：保证每行恰好 25 格，手写 58 行太容易错
+function _row(feats) {
+  const r = Array(25).fill('s');
+  r[0] = r[24] = 'W'; r[9] = r[15] = 'W';      // 外墙 + 主廊两侧
+  for (const k in feats) r[+k] = feats[k];
+  return r.join('');
+}
+const _seal = 'W'.repeat(10) + 'sssss' + 'W'.repeat(10);
+const _open = 'W' + 's'.repeat(23) + 'W';
+
+const CH2_MAP = [
+  "WWWWWWWWWWWWWWWWWWWWWWWWW", // 0
+  "WsssssssssssssssssssssssW",
+  "WsrrrssssssssssssssrrrssW", // 2  两栋房子
+  "WswwwssssssssssssssswwwsW",
+  "WswdwssssssssssssssswdwsW", // 4  门: (3,4) (20,4)
+  "WsssssssPsssssssPsssssssW", // 5  柱子
+  "Wsss4sssssssssssss5sssssW", // 6  账房先生 / 卖糖的姐姐
+  "WsrrrsssssssssssssssssssW", // 7
+  "WswwwsssssssssssssssssssW",
+  "WswdwsssssssssssssssssssW", // 9  门: (3,9)
+  "Wsss6sssssPsssssPsss7sssW", // 10 小满(委托) / 扫地的老人
+  "WsssssssssssssssssssssssW",
+  "Wsss8sssssssssssssssssssW", // 12 阿力(闲聊)
+  "WWWWWWWWWWWsssWWWWWWWWWWW", // 13 回廊入口
+  _open,                        // 14
+  _open,                        // 15
+  _row({}),                     // 16 主廊成形
+  _row({}),                     // 17
+  _row({ 9:'s' }),              // 18 ← 左支路开口
+  _row({}),                     // 19
+  _row({ 3:'p' }),              // 20 碎片
+  _row({ 6:'9' }),              // 21 迷路的货郎(线索)
+  _row({ 5:'c' }),              // 22 宝箱
+  _seal,                        // 23
+  _row({}),                     // 24
+  _row({}),                     // 25
+  _row({ 15:'s' }),             // 26 ← 右支路开口
+  _row({}),                     // 27
+  _row({ 19:'c' }),             // 28 宝箱
+  _row({ 21:'p' }),             // 29 碎片
+  _seal,                        // 30
+  _row({}),                     // 31
+  _row({}),                     // 32
+  _row({ 9:'s' }),              // 33 ← 左支路开口
+  _row({}),                     // 34
+  _row({ 3:'h' }),              // 35 隐藏(需钩爪)
+  _row({ 6:'b' }),              // 36 小满的糖罐(委托物)
+  _row({ 7:'h' }),              // 37 隐藏(需钩爪)
+  _seal,                        // 38
+  _row({}),                     // 39
+  _row({}),                     // 40
+  _row({ 15:'s' }),             // 41 ← 右支路开口
+  _row({}),                     // 42
+  _row({ 19:'h' }),             // 43 隐藏(需钩爪)
+  _row({ 21:'c' }),             // 44 宝箱
+  _seal,                        // 45
+  _open,                        // 46 迷宫前广场
+  _open,                        // 47
+  "Wsssssssss~D~sssssssssssW", // 48 分糖石室入口（两侧水池）
+  _open,                        // 49
+  "WWWWWWWWWWWWGWWWWWWWWWWWW", // 50 石门
+  _open,                        // 51 Boss 区
+  _open,                        // 52
+  "WsssssssssssXsssssssssssW", // 53 记忆水晶
+  "WsssssssssssBsssssssssssW", // 54 分糖巨人
+  _open,                        // 55
+  _open,                        // 56
+  "WWWWWWWWWWWWWWWWWWWWWWWWW", // 57
+];
+
+const CH2_START   = { x:12, y:11 };
+const CH2_REVENGE = { x:13, y:14 };
+
+const CH2_SPAWNS = [
+  { k:'spider', x:12, y:15 },
+  { k:'spider', x:11, y:17 },
+  { k:'spider', x:4,  y:19 },
+  { k:'imp2',   x:13, y:21 },
+  { k:'spider', x:12, y:25 },
+  { k:'owl',    x:19, y:27 },
+  { k:'imp2',   x:11, y:29 },
+  { k:'owl',    x:13, y:34 },
+  { k:'imp2',   x:5,  y:36 },
+  { k:'spider', x:12, y:40 },
+  { k:'owl',    x:20, y:42 },
+  { k:'imp2',   x:12, y:47 },
+];
+
+// 日记第 9–16 页：越来越孤立（不给身份线索）
+const CH2_FRAGS = [
+  { where:'左支路',   text:'第九页：\n「今天装病。\n娘摸我的头，说没发烧啊。」' },
+  { where:'右支路',   text:'第十页：\n「我数着回廊的回声，\n一二三……数到七就乱了。」' },
+  { where:'石室第一间', text:'第十一页：\n「同桌换了人。\n新来的那个，什么都会。」' },
+  { where:'石室第三间', text:'第十二页：\n「先生让我们两个一起算。\n他算完了，我还在第一步。」' },
+  { where:'宝箱里',   text:'第十三页：\n「他没笑我。\n可他也没等我。」' },
+  { where:'隐藏处',   text:'第十四页：\n「我宁可他笑我。」' },
+  { where:'隐藏处',   text:'第十五页：\n「我把算错的纸都扔进回廊了。\n风把它们吹回来。」' },
+  { where:'隐藏处',   text:'第十六页：\n「扔不掉的。」' },
+];
+
+const CH2_NPCS = {
+  '1': { name:'账房总管', tex:'npc_elder',    role:'elder' },
+  '2': { name:'商人',     tex:'npc_merchant', role:'shop' },
+  '3': { name:'老师',     tex:'npc_teacher',  role:'teacher' },
+  '4': { name:'账房先生', tex:'npc_smith',    role:'clue', clue:'c2a' },
+  '5': { name:'卖糖的姐姐',tex:'npc_aunt',    role:'clue', clue:'c2b' },
+  '6': { name:'小满',     tex:'npc_girl',     role:'quest' },
+  '7': { name:'扫地的老人',tex:'npc_grandpa', role:'lore' },
+  '8': { name:'阿力',     tex:'npc_boy',      role:'chat' },
+  '9': { name:'迷路的货郎',tex:'npc_traveler', role:'clue', clue:'c2c' },
+};
+
+const CH2_CLUES = {
+  c2a: { lock:'chest3', from:'账房先生',   ask:'口令头一个数？\n十五颗糖分给三个人，一人几颗。',
+         answer:5, note:'口令第1个数 = 15÷3' },
+  c2b: { lock:'chest3', from:'卖糖的姐姐', ask:'第二个数啊——\n二十颗糖装五袋，一袋几颗？',
+         answer:4, note:'口令第2个数 = 20÷5' },
+  c2c: { lock:'lore',   from:'迷路的货郎', ask:'回廊墙缝里卡着东西。\n可惜我够不着，得有带钩子的家伙。',
+         answer:null, note:'墙缝里有东西（先拿到钩爪再回来）' },
+  c2d: { lock:'chest3', from:'小满',       ask:'第三个数！\n我数过的——十七颗糖分给六个人，会剩几颗？',
+         answer:5, note:'口令第3个数 = 17÷6 的余数' },
+};
+
+const CH2_LOCKS = [
+  { kind:'calc',    icon:'🔢', hint:'箱盖上刻着一道除法题' },
+  { kind:'balance', icon:'⚖️', hint:'箱盖上是一架天平，要找出相等的那个' },
+  { kind:'code',    icon:'🔒', hint:'三个数字轮盘。\n营地里有人知道口令。', clues:['c2a','c2b','c2d'] },
+];
+
+const CH2_CHESTS = [
+  { kind:'gear', key:'iron_h',   msg:'找到了【铁头盔】！' },
+  { kind:'frag', idx:4,          msg:'箱子里是一页发黄的纸……' },
+  { kind:'gear', key:'necklace', msg:'找到了传说中的【九九项链】！\n（商店买不到，数学题伤害+30%）' },
+];
+
+const CH2_HOUSES = {
+  '3,4':  { name:'账房总管家', owner:'1', rows:[
+    "WWWWWWWWW","WFuFFFuFW","WFFFFFFFW","WFtFNFtFW","WFFFFFFFW","WBFFFFFpW","WFFFDFFFW","WWWWWWWWW" ]},
+  '21,4': { name:'商人的铺子', owner:'2', rows:[
+    "WWWWWWWWW","WuuFFFuuW","WFFFFFFFW","WFFFNFFFW","WFtFFFtFW","WpFFFFFBW","WFFFDFFFW","WWWWWWWWW" ]},
+  '3,9':  { name:'回廊学堂',   owner:'3', rows:[
+    "WWWWWWWWW","WFuFFFuFW","WtFtFtFtW","WFFFNFFFW","WtFtFtFtW","WpFFFFFpW","WFFFDFFFW","WWWWWWWWW" ]},
+};
+
+const CH2_SHOP = ['tri_sword','compass','iron_h','abacus_s','eraser_s','wind_b','dict','divider'];
+
+// ---- 分糖机关（第2章招牌谜题）----
+// 把 N 颗糖平均分到 M 个盘子里，分不完的留在中间当余数
+const CH2_CANDY = [
+  { name:'第一间 · 分给三个人', total:12, plates:3, hint:'一颗一颗放，每盘要一样多。12 颗分 3 盘。',
+    reward:{ kind:'frag', idx:2 } },
+  { name:'第二间 · 分不完怎么办', total:14, plates:4, hint:'14 颗分 4 盘，每盘 3 颗，剩下的 2 颗放不进去 —— 那就是余数。',
+    reward:{ kind:'gold', val:260 } },
+  { name:'第三间 · 想清楚再放', total:23, plates:5, hint:'先想每盘能放几颗，再想会剩几颗。23 ÷ 5 = 4 …… 3',
+    reward:{ kind:'frag', idx:3 } },
+];
+
+// ============================================================
+// 章节表：game.js 通过 loadChapter() 切换，其余代码无需改动
+// ============================================================
+const CHAPTERS = [
+  { n:1, name:'乘法口诀沙漠', recLv:6,  tool:'lens', toolName:'🔍放大镜', boss:'boss',
+    map:CH1_MAP, start:CH1_START, revenge:CH1_REVENGE, spawns:CH1_SPAWNS,
+    frags:CH1_FRAGS, npcs:CH1_NPCS, clues:CH1_CLUES, locks:CH1_LOCKS,
+    chests:CH1_CHESTS, houses:CH1_HOUSES, shop:CH1_SHOP,
+    puzzle:{ kind:'sokoban', rooms:CH1_SOKOBAN },
+    bossTile:{ x:12, y:55 }, crystalTile:{ x:12, y:54 },
+    hiddenBase:5, hiddenTool:'lens', hiddenToolName:'放大镜' },
+  { n:2, name:'除法回廊', recLv:11, tool:'hook', toolName:'🪝词语钩爪', boss:'boss2',
+    map:CH2_MAP, start:CH2_START, revenge:CH2_REVENGE, spawns:CH2_SPAWNS,
+    frags:CH2_FRAGS, npcs:CH2_NPCS, clues:CH2_CLUES, locks:CH2_LOCKS,
+    chests:CH2_CHESTS, houses:CH2_HOUSES, shop:CH2_SHOP,
+    puzzle:{ kind:'candy', rooms:CH2_CANDY },
+    bossTile:{ x:12, y:54 }, crystalTile:{ x:12, y:53 },
+    hiddenBase:5, hiddenTool:'hook', hiddenToolName:'词语钩爪' },
+];
+
+// 当前章节的数据（game.js 直接用这些名字）
+let MAP, MAPW, MAPH, SPAWNS, PLAYER_START, REVENGE_TILE, FRAGMENTS,
+    NPCS, CLUES, CHEST_LOCKS, CHESTS, HOUSES, SHOP_GEAR, SOKOBAN, CHAPTER;
+
+function loadChapter(i) {
+  const c = CHAPTERS[Math.min(i, CHAPTERS.length - 1)];
+  CHAPTER = c;
+  MAP = c.map; MAPH = c.map.length; MAPW = c.map[0].length;
+  SPAWNS = c.spawns; PLAYER_START = c.start; REVENGE_TILE = c.revenge;
+  FRAGMENTS = c.frags; NPCS = c.npcs; CLUES = c.clues; CHEST_LOCKS = c.locks;
+  CHESTS = c.chests; HOUSES = c.houses; SHOP_GEAR = c.shop;
+  SOKOBAN = c.puzzle.rooms;
+  return c;
+}
+loadChapter(0);
+
 if (typeof module !== 'undefined') {
   module.exports = { MAP, MAPW, MAPH, ENEMIES, SPAWNS, GEAR, SLOTS, SHOP_GEAR, SPELLS, spellsAt,
                      FRAGMENTS, CHESTS, SOKOBAN, PLAYER_START, REVENGE_TILE,
                      NPCS, CLUES, CHEST_LOCKS, TOTAL_FRAGS, HOUSES, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
-                     getQuestion, multQ, addsubQ, chineseQ, balanceQ, numCN, CN };
+                     CHAPTERS, loadChapter, CH2_CANDY,
+                     getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
 }

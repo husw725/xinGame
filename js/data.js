@@ -706,12 +706,23 @@ function loadChapter(i) {
   SOKOBAN = c.puzzle.rooms;
   return c;
 }
+// 碎片是全局编号（第c章第i页 = c*8+i），日记要跨章累积才拼得出真相
+function fragGlobal(chapterIdx, local) { return chapterIdx * 8 + local; }
+function fragText(g) {
+  const c = CHAPTERS[Math.floor(g / 8)];
+  return c ? c.frags[g % 8] : null;
+}
+function fragsOfChapter(chapterIdx, list) {
+  const lo = chapterIdx * 8, hi = lo + 8;
+  return list.filter(g => g >= lo && g < hi);
+}
+
 loadChapter(0);
 
 if (typeof module !== 'undefined') {
   module.exports = { MAP, MAPW, MAPH, ENEMIES, SPAWNS, GEAR, SLOTS, SHOP_GEAR, SPELLS, spellsAt,
                      FRAGMENTS, CHESTS, SOKOBAN, PLAYER_START, REVENGE_TILE,
                      NPCS, CLUES, CHEST_LOCKS, TOTAL_FRAGS, HOUSES, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
-                     CHAPTERS, loadChapter, CH2_CANDY,
+                     CHAPTERS, loadChapter, CH2_CANDY, fragGlobal, fragText, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
 }

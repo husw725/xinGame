@@ -55,6 +55,7 @@ function gearDelta(key, slot) {
   return { text: `  ${now}→${val} ＝`, tint: '#9aa2bd' };
 }
 function learned() { return spellsAt(GS.p.lv); }
+function chapterFrags() { return fragsOfChapter(GS.chapter, GS.frags).length; }
 
 // ============ 通用 UI ============
 function makeButton(scene, x, y, w, h, label, cb, opts = {}) {
@@ -340,7 +341,7 @@ class World extends Phaser.Scene {
           this.chests[key + '_spr'] = spr;
           if (!opened) this.blocked.add(key);   // 未开的箱子挡路，撞它=开箱
         } else if (ch === 'p') {
-          const n = fragN++;
+          const n = fragGlobal(GS.chapter, fragN++);
           if (!GS.frags.includes(n)) {
             this.frags[key] = n;
             const spr = this.add.image(x * TILE + 16, y * TILE + 16, 'frag').setScale(2).setDepth(4);
@@ -348,7 +349,7 @@ class World extends Phaser.Scene {
             this.frags[key + '_spr'] = spr;
           }
         } else if (ch === 'h') {
-          const n = 5 + hidN++;   // 隐藏处放的是第6~8页
+          const n = fragGlobal(GS.chapter, 5 + hidN++);   // 隐藏处放的是本章第6~8页
           if (!GS.frags.includes(n)) {
             this.hidden[key] = n;
             if (GS.tools.includes(CHAPTER.hiddenTool)) {   // 有对应工具才看得见
@@ -660,9 +661,9 @@ class World extends Phaser.Scene {
       const lines = GS.flags.boss
         ? ['你夺回了记忆水晶，太了不起了！',
            GS.frags.length < 8
-             ? `不过你手上那些发黄的纸……\n还差 ${8 - GS.frags.length} 页呢。\n用放大镜在沙漠里找找看。`
+             ? `不过你手上那些发黄的纸……\n本章还差 ${8 - chapterFrags()} 页呢。\n用${CHAPTER.toolName}再找找看。`
              : '这一章的八页你都拼齐了。\n可日记明显还没写完——\n后面的页数，大概散在别的地方。']
-        : ['南边沙漠里的口诀骆驼王守着记忆水晶。',
+        : [GS.chapter === 0 ? '南边沙漠里的口诀骆驼王守着记忆水晶。' : '回廊尽头的分糖巨人守着第二颗水晶。',
            '路上有一扇大石门，推不开的。\n旁边石室里有会动的石箱，\n那是开门的机关。',
            '沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。',
            '答错的题会变成【怨念怪】出现在村口，\n打败它才算真正学会哦！'];
@@ -692,17 +693,37 @@ class World extends Phaser.Scene {
     const p = GS.p;
     this.dialog.choice(
       `勇者 Lv${p.lv}　💰${p.gold}\nHP ${p.hp}/${p.maxhp}　MP ${p.mp}/${p.maxmp}\n⚔️${totalAtk()} 🛡️${totalDef()} 👟${totalSpd()}`,
-      ['🎽 装备栏', '✨ 魔法（野外）', `📖 冒险手册（本章碎片 ${GS.frags.length}/8）`, '关闭'], i => {
+      ['🎽 装备栏', '✨ 魔法（野外）', `📖 冒险手册（本章 ${chapterFrags()}/8）`,
+       ...(GS.chapter > 0 ? ['🚪 回到上一章'] : []), '关闭'], i => {
         if (i === 0) this.equipMenu(() => this.openMenu());
         else if (i === 1) this.fieldSpells();
         else if (i === 2) this.handbook();
+        else if (i === 3 && GS.chapter > 0) this.gotoChapter(GS.chapter - 1);
+      });
+  }
+
+  // 章节跳转：可以回上一章补没拿到的碎片（放大镜/钩爪是打完 Boss 才有的）
+  gotoChapter(idx) {
+    const c = CHAPTERS[idx];
+    const left = 8 - fragsOfChapter(idx, GS.frags).length;
+    this.dialog.choice(
+      `回到${c.name}？\n那边还有 ${left} 页日记没找到。\n（等级、装备、日记都会带着）`,
+      ['回去看看', '不用了'], i => {
+        if (i !== 0) return;
+        GS.chapter = idx;
+        GS.flags = { intro: true, boss: true, puzzle: true };   // 旧章节的门都已开
+        GS.chests = []; GS.locks = []; GS.rooms = [0, 1, 2];
+        GS.clues = []; GS.quest = {}; GS.pos = null;
+        loadChapter(idx);
+        saveGame();
+        this.scene.start('World');
       });
   }
 
   handbook() {
     const toolTxt = GS.tools.length ? GS.tools.map(t => t === 'lens' ? '🔍放大镜' : t).join(' ') : '（还没有）';
     this.dialog.choice(
-      `冒险手册\n本章碎片 ${GS.frags.length}/8　图鉴 ${GS.dex.length}/5\n线索 ${GS.clues.length}/4　工具：${toolTxt}`,
+      `冒险手册　${CHAPTER.name}\n本章碎片 ${chapterFrags()}/8　全书 ${GS.frags.length}/${TOTAL_FRAGS}\n图鉴 ${GS.dex.length}　线索 ${GS.clues.length}　${toolTxt}`,
       ['📓 线索本', '📜 捡到的日记', '👾 怪物图鉴', '↩️ 返回'], i => {
         if (i === 0) this.showClues();
         else if (i === 1) this.readDiary();
@@ -751,11 +772,18 @@ class World extends Phaser.Scene {
     }
     const sorted = GS.frags.slice().sort((a, b) => a - b);
     const lines = ['这是一本日记，字迹很小心。'];
-    sorted.forEach(n => lines.push(FRAGMENTS[n].text));
-    if (GS.frags.length < 8) {
-      lines.push(`还差 ${8 - GS.frags.length} 页。\n中间断掉的地方，读不下去。`);
+    let lastCh = -1;
+    sorted.forEach(n => {
+      const ch = Math.floor(n / 8);
+      if (ch !== lastCh) { lines.push(`—— 在${CHAPTERS[ch].name}捡到的 ——`); lastCh = ch; }
+      const f = fragText(n);
+      if (f) lines.push(f.text);
+    });
+    const total = TOTAL_FRAGS;
+    if (GS.frags.length < total) {
+      lines.push(`已拼出 ${GS.frags.length}/${total} 页。\n断掉的地方，读不下去。`);
     } else {
-      lines.push('这八页连起来了。\n可开头和结尾都没有——\n这孩子究竟是谁？');
+      lines.push('整本都拼齐了。');
     }
     this.dialog.say(lines, () => this.handbook());
   }
@@ -1108,9 +1136,10 @@ class World extends Phaser.Scene {
       lines.push(`装备上了！${g.desc}`);
     } else if (item.kind === 'frag') {
       lines.push(item.msg);
-      if (!GS.frags.includes(item.idx)) {
-        GS.frags.push(item.idx);
-        lines.push(FRAGMENTS[item.idx].text, `（本章记忆碎片 ${GS.frags.length}/8）`);
+      const g = fragGlobal(GS.chapter, item.idx);
+      if (!GS.frags.includes(g)) {
+        GS.frags.push(g);
+        lines.push(fragText(g).text, `（本章记忆碎片 ${chapterFrags()}/8）`);
       }
     } else if (item.kind === 'gold') {
       GS.p.gold += item.val;
@@ -1127,10 +1156,10 @@ class World extends Phaser.Scene {
     delete (wasHidden ? this.hidden : this.frags)[key];
     saveGame();
     const lines = wasHidden
-      ? ['放大镜下，沙子里露出一角发黄的纸。', FRAGMENTS[n].text]
-      : ['地上有一页发黄的纸……', FRAGMENTS[n].text];
-    lines.push(`（本章记忆碎片 ${GS.frags.length}/8）`);
-    if (GS.frags.length === 8) lines.push('这一章的八页都找到了。\n日记还长着呢。');
+      ? [`${CHAPTER.toolName}下，露出一角发黄的纸。`, fragText(n).text]
+      : ['地上有一页发黄的纸……', fragText(n).text];
+    lines.push(`（本章记忆碎片 ${chapterFrags()}/8　全书 ${GS.frags.length}/${TOTAL_FRAGS}）`);
+    if (chapterFrags() === 8) lines.push('这一章的八页都找到了。\n日记还长着呢。');
     this.dialog.say(lines);
   }
 
@@ -1241,7 +1270,7 @@ class World extends Phaser.Scene {
           GS.chapter === 0
             ? '「沙漠里有几处沙子不太一样，\n用放大镜看看，会有发现的。」'
             : '「回廊的墙缝里卡着东西。\n用钩爪就够得着了。」',
-          `本章记忆碎片还差 ${8 - GS.frags.length} 页。\n回头去找找吧。`,
+          `本章记忆碎片还差 ${8 - chapterFrags()} 页。\n回头去找找吧。`,
         ], () => this.scene.start('Clear'), '');
         this.crystal && this.tweens.add({ targets: this.crystal, y: this.crystal.y - 60, alpha: 0, duration: 1500, onComplete: () => this.crystal.destroy() });
         this.updateHUD();
@@ -2183,10 +2212,10 @@ class Clear extends Phaser.Scene {
 
   // 进入下一章：本章进度归零，人物等级/装备/日记全部带走
   nextChapter() {
-    const carried = GS.frags.length;
     GS.chapter += 1;
     GS.flags = { intro: true, boss: false, puzzle: false };
-    GS.frags = []; GS.chests = []; GS.locks = []; GS.rooms = [];
+    // 日记不清空 —— 56 页要跨章累积，清了整条暗线就废了
+    GS.chests = []; GS.locks = []; GS.rooms = [];
     GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pool = [];
     GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.fromHouse = null;
     loadChapter(GS.chapter);

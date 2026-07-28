@@ -1449,7 +1449,8 @@ class World extends Phaser.Scene {
         // 45 秒后重生，且玩家离窝还有 6 格以上才放出来 ——
         // 否则刚打完转身就顶脸复活，孩子会觉得永远打不完
         const tryRespawn = () => {
-          if (!this.scene.isActive() || mob.sprite.active === false) return;
+          if (!mob.sprite || mob.sprite.active === false) return;   // 场景已重建，交给新场景管
+          if (!this.scene.isActive()) { this.time.delayedCall(5000, tryRespawn); return; }
           const far = Math.abs(this.px - mob.home.x) + Math.abs(this.py - mob.home.y) >= 6;
           if (!far) { this.time.delayedCall(5000, tryRespawn); return; }
           mob.x = mob.home.x; mob.y = mob.home.y; mob.dead = false;

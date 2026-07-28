@@ -590,7 +590,13 @@ class World extends Phaser.Scene {
       if (!GS.tools.includes('lens')) { this.dialog.say(['这里的沙子好像有点不一样……\n可是什么也看不出来。']); return; }
       this.pickFrag(key, this.hidden[key], true); return;
     }
-    // 挡路的东西（NPC / 宝箱 / 门 / 石门 / 魔王 / 迷宫）撞上去只是挡住，
+    // 门：走进去就进屋，不用按 A
+    if (this.doors.has(key)) {
+      if (HOUSES[key]) this.enterHouse(key);
+      else this.dialog.say(['门锁着……里面好像没有人。']);
+      return;
+    }
+    // 其余挡路的东西（NPC / 宝箱 / 石门 / 魔王 / 迷宫）撞上去只是挡住，
     // 要面朝它按 A 才交互 —— 经典 DQ 规则
     if (this.blocked.has(key)) return;
 

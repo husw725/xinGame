@@ -606,7 +606,8 @@ class World extends Phaser.Scene {
     this.tweens.add({ targets: t, y: 250, alpha: 0, duration: 2200, onComplete: () => t.destroy() });
   }
 
-  // A = 确认 / 对话 / 打开菜单；B = 取消 / 返回 / 关闭
+  // A = 确认 / 对话 / 调查；B = 取消 / 返回 / 关闭，没东西可关时打开菜单
+  // A 不再兜底开菜单：想调查却弹出菜单太容易误触
   makeAB() {
     const A = makeButton(this, 392, 690, 80, 80, 'A', () => this.pressA(), { fontSize: '30px', color: 0x3a6b45 });
     const B = makeButton(this, 306, 756, 68, 68, 'B', () => this.pressB(), { fontSize: '26px', color: 0x8a3a3a });
@@ -622,8 +623,7 @@ class World extends Phaser.Scene {
     if (this.inBattle) return;
     if (this.dialog.hasChoices()) { this.dialog.confirmSel(); return; }
     if (this.dialog.open) { this.dialog.lastTap = 0; this.dialog.tap(); return; }
-    if (this.interactFront()) return;
-    this.openMenu();
+    this.interactFront();
   }
 
   pressB() {
@@ -631,6 +631,7 @@ class World extends Phaser.Scene {
     if (this.inBattle) return;
     if (this.dialog.hasChoices()) { this.dialog.cancelSel(); return; }
     if (this.dialog.open) { this.dialog.skip(); return; }
+    this.openMenu();
   }
 
   // 面朝方向的那一格有东西就交互（不用再撞上去）

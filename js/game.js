@@ -514,9 +514,27 @@ class World extends Phaser.Scene {
       if (!GS.tools.includes('lens')) { this.dialog.say(['这里的沙子好像有点不一样……\n可是什么也看不出来。']); return true; }
       this.pickFrag(key, this.hidden[key], true); return true;
     }
-    if (this.book && this.book.x === nx && this.book.y === ny) { this.tryStep(this.facing); return true; }
-    if (ch === 'd' && HOUSES[key]) { this.enterHouse(key); return true; }
+    if (ch === 'd') {
+      if (HOUSES[key]) this.enterHouse(key);
+      else this.dialog.say(['门锁着……里面好像没有人。']);
+      return true;
+    }
     if (ch === 'D') { this.enterDungeon(); return true; }
+    if (ch === 'G' && !GS.flags.puzzle) {
+      this.dialog.say([
+        '一扇巨大的石门，上面刻着乘法口诀。',
+        '门缝里透出光，可是推不开——\n旁边那个石室里好像有机关。',
+      ]);
+      return true;
+    }
+    if (!GS.flags.boss && nx === this.bossTile.x && ny === this.bossTile.y) {
+      this.dialog.say(['哞——想要水晶？\n先把乘法口诀背熟再来吧，小豆丁！'], () => {
+        this.dialog.choice('要挑战口诀骆驼王吗？', ['挑战！', '先撤退…'], i => {
+          if (i === 0) this.startBattle(ENEMIES.boss, { boss: true });
+        });
+      }, '口诀骆驼王');
+      return true;
+    }
     return false;
   }
 
@@ -557,50 +575,20 @@ class World extends Phaser.Scene {
     if (this.revengeSprite && this.revengeSprite.gx === nx && this.revengeSprite.gy === ny) {
       this.startBattle(ENEMIES.revenge, { revenge: true }); return;
     }
-    // 宝箱
-    if (this.chests[key] !== undefined && !GS.chests.includes(this.chests[key])) {
-      this.tryChest(key, this.chests[key]); return;
-    }
-    // 朵朵的作业本
+    // 地上捡的东西：走过去自动拿（这类不挡路）
     if (this.book && this.book.x === nx && this.book.y === ny) {
       this.book.spr.destroy(); this.book = null;
       GS.quest.dodo = 'found'; saveGame();
       this.dialog.say(['捡到了一本浅蓝色封面的作业本。', '是朵朵丢的那本吧？\n拿回村里还给她。']);
       return;
     }
-    // 记忆碎片
     if (this.frags[key] !== undefined) { this.pickFrag(key, this.frags[key], false); return; }
-    // 隐藏处（需放大镜）
     if (this.hidden[key] !== undefined) {
       if (!GS.tools.includes('lens')) { this.dialog.say(['这里的沙子好像有点不一样……\n可是什么也看不出来。']); return; }
       this.pickFrag(key, this.hidden[key], true); return;
     }
-    // 迷宫入口
-    if (MAP[ny][nx] === 'D') { this.enterDungeon(); return; }
-    // 石门
-    if (MAP[ny][nx] === 'G' && !GS.flags.puzzle) {
-      this.dialog.say([
-        '一扇巨大的石门，上面刻着乘法口诀。',
-        '门缝里透出光，可是推不开——\n旁边那个石室里好像有机关。',
-      ]);
-      return;
-    }
-    // 魔王
-    if (!GS.flags.boss && nx === this.bossTile.x && ny === this.bossTile.y) {
-      this.dialog.say(['哞——想要水晶？\n先把乘法口诀背熟再来吧，小豆丁！'], () => {
-        this.dialog.choice('要挑战口诀骆驼王吗？', ['挑战！', '先撤退…'], i => {
-          if (i === 0) this.startBattle(ENEMIES.boss, { boss: true });
-        });
-      }, '口诀骆驼王');
-      return;
-    }
-    // NPC
-    if (this.npcs[key]) { this.talkNpc(this.npcs[key]); return; }
-    if (this.doors.has(key)) {
-      if (HOUSES[key]) { this.enterHouse(key); return; }
-      this.dialog.say(['门锁着……里面好像没有人。']);
-      return;
-    }
+    // 挡路的东西（NPC / 宝箱 / 门 / 石门 / 魔王 / 迷宫）撞上去只是挡住，
+    // 要面朝它按 A 才交互 —— 经典 DQ 规则
     if (this.blocked.has(key)) return;
 
     // 移动（鞋子加速：孩子唯一能用眼睛立刻看出来的属性）
@@ -1314,14 +1302,7 @@ class Battle extends Phaser.Scene {
     this.timerBar = this.add.image(20, 556, 'px').setOrigin(0, 0.5).setScale(440, 8).setTint(0xffb347).setVisible(false);
 
     this.buttons = [];
-    // 战斗里的 A/B：A=推进消息，B=从魔法/道具子菜单退回
-    const A = makeButton(this, 392, 480, 68, 68, 'A', () => {
-      if (this.state === 'msg') { this.lastTap = 0; this.tapMsg(); }
-    }, { fontSize: '26px', color: 0x3a6b45 });
-    const B = makeButton(this, 88, 480, 60, 60, 'B', () => {
-      if (this.state === 'menu' && this.buttons.some(b => /返回/.test(b.txt.text))) this.showMenu();
-    }, { fontSize: '22px', color: 0x8a3a3a });
-    [A, B].forEach(b => { b.bg.setDepth(90); b.txt.setDepth(91); });
+    // 战斗界面不放 A/B：本来就是四个大按钮直接点，A/B 会压住消息框
     this.input.keyboard.on('keydown-Z', () => { if (this.state === 'msg') { this.lastTap = 0; this.tapMsg(); } });
     this.input.keyboard.on('keydown-SPACE', () => this.tapMsg());
     this.input.on('pointerdown', () => {
@@ -1704,7 +1685,7 @@ class House extends Phaser.Scene {
 
     this.add.rectangle(W / 2, H / 2, W, H, 0x1a1410);
     this.add.text(W / 2, 60, h.name, { fontSize: '28px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
-    this.add.text(W / 2, 100, '柜子、桌子、盆栽都可以翻一翻', { fontSize: '16px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
+    this.add.text(W / 2, 100, '面朝柜子按 A 就能翻一翻', { fontSize: '16px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
 
     const TEX = { W: 't_iwall', F: 't_floor', D: 't_exit', u: 't_cabinet', t: 't_table', p: 't_plant', B: 't_bed', N: 't_floor' };
     this.furn = {};
@@ -1751,7 +1732,6 @@ class House extends Phaser.Scene {
         this.add.text(x, y, ch, { fontSize: '22px', color: '#fff' }).setOrigin(0.5);
         r.on('pointerdown', () => { if (!this.busy) this.queued = d; });
       });
-    makeButton(this, 350, 726, 190, 60, '🚪 出去', () => this.leave(), { fontSize: '20px' });
   }
 
   // 室内也支持 A/B：A=查看面前的东西，B=出去
@@ -1766,7 +1746,10 @@ class House extends Phaser.Scene {
       else if (this.furn[nx + ',' + ny]) { this.busy = true; this.search(nx, ny); }
       else if (ch === 'D') this.leave();
     }, { fontSize: '30px', color: 0x3a6b45 });
-    const B = makeButton(this, 306, 756, 68, 68, 'B', () => this.leave(), { fontSize: '26px', color: 0x8a3a3a });
+    const B = makeButton(this, 306, 756, 68, 68, 'B', () => {
+      this.msg.setText('从门口走出去就行。');
+      this.time.delayedCall(1200, () => this.msg.setText(''));
+    }, { fontSize: '26px', color: 0x8a3a3a });
     [A, B].forEach(b => { b.bg.setDepth(90); b.txt.setDepth(91); });
   }
 
@@ -1790,10 +1773,8 @@ class House extends Phaser.Scene {
     if (nx < 0 || ny < 0 || nx >= this.gw || ny >= this.gh) return;
     const ch = this.rows[ny][nx];
 
-    if (ch === 'D') { this.leave(); return; }
-    if (ch === 'N') { this.busy = true; this.talkOwner(); return; }
-    if (this.furn[nx + ',' + ny]) { this.busy = true; this.search(nx, ny); return; }
-    if (HOUSE_BLOCK.includes(ch)) return;
+    if (ch === 'D') { this.leave(); return; }        // 走到门口就出去
+    if (HOUSE_BLOCK.includes(ch)) return;              // 家具/屋主挡住，要按 A 才查看
 
     this.moving = true;
     this.pos = { x: nx, y: ny };

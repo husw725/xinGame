@@ -526,6 +526,11 @@ class World extends Phaser.Scene {
   }
 
   update() {
+    // 看门狗：inBattle 是给战斗/室内/迷宫用的输入锁。
+    // 万一那些场景没走正常出口就结束了，这里兜底解锁，否则地图会永久卡死。
+    if (this.inBattle && !['Battle', 'House', 'Puzzle'].some(k => this.scene.isActive(k))) {
+      this.inBattle = false;
+    }
     if (this.moving || this.inBattle || this.dialog.open) return;
     let d = this.queued;
     this.queued = null;

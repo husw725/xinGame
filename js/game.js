@@ -237,6 +237,15 @@ class DialogBox {
     return true;
   }
   // B 键：优先选"返回/取消/关闭"这类退出项，没有就选最后一项
+  // B 键：一按跳过整段（tap() 第一次只会把字打完，不算跳过）
+  skip() {
+    if (!this.open || this.choiceButtons.length) return;
+    if (this.timer) this.timer.remove();
+    this.typing = false;
+    this.queue = [];
+    this.close();
+  }
+
   cancelSel() {
     if (!this.hasChoices()) return false;
     const idx = this.choiceButtons.findIndex(b => /返回|取消|关闭|离开|算了|不用|再说|先撤退|不练/.test(b.txt.text));
@@ -488,13 +497,7 @@ class World extends Phaser.Scene {
   pressB() {
     if (this.inBattle) return;
     if (this.dialog.hasChoices()) { this.dialog.cancelSel(); return; }
-    if (this.dialog.open) {
-      // 跳过整段对话
-      this.dialog.queue = [];
-      this.dialog.lastTap = 0;
-      this.dialog.tap();
-      return;
-    }
+    if (this.dialog.open) { this.dialog.skip(); return; }
   }
 
   // 面朝方向的那一格有东西就交互（不用再撞上去）

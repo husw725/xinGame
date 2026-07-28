@@ -1145,7 +1145,10 @@ class World extends Phaser.Scene {
   enterDungeon() {
     const left = SOKOBAN.length - GS.rooms.length;
     if (left === 0) { this.dialog.say(['石室里的机关都解开了。']); return; }
-    this.dialog.say(['石室里摆着几个刻了数字的石箱，\n地上有写着口诀的凹槽。'], () => {
+    const desc = CHAPTER.puzzle.kind === 'candy'
+      ? '石室中间堆着一小堆糖，\n旁边摆着几个空盘子。'
+      : '石室里摆着几个刻了数字的石箱，\n地上有写着口诀的凹槽。';
+    this.dialog.say([desc], () => {
       this.dialog.choice(`要进石室吗？（还剩 ${left} 间）`, ['进去！', '再等等'], i => {
         if (i !== 0) return;
         this.inBattle = true;   // 借用同一个锁，避免地图继续响应输入

@@ -35,6 +35,9 @@ echo "✓ 通过"
 echo "--- 谜题可解性校验 ---"
 node puzzle_check.js > /dev/null || { echo "✗ puzzle_check.js 未通过，已中止发布"; exit 1; }
 echo "✓ 通过"
+echo "--- 头顶标记校验 ---"
+node mark_check.js > /dev/null || { echo "✗ mark_check.js 未通过：任务标记指错人"; exit 1; }
+echo "✓ 通过"
 echo "--- 章节多样性校验 ---"
 node variety_check.js > /dev/null || { echo "✗ variety_check.js 未通过：新章节太像旧章节"; exit 1; }
 echo "✓ 通过"

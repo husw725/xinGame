@@ -17,6 +17,7 @@ function defaultState() {
     outPos: null,   // 进屋前站在哪
     flags: { intro: false, boss: false, puzzle: false },
     clues: [],    // 已记下的线索 key
+    talked: [],   // 聊过的 NPC（"章:id"），用来决定头上还要不要挂 !
     quest: {},    // 支线状态：dodo = null/'taken'/'found'/'done'
     locks: [],    // 已解开的宝箱锁编号
     searched: {}, // 各屋内翻过的家具
@@ -345,7 +346,11 @@ class World extends Phaser.Scene {
             if ((GS.searched[this.indoor] || []).includes(key))
               this.add.text(x * TILE + 16, y * TILE + 2, '·', { fontSize: '16px', color: '#8a7548' }).setOrigin(0.5).setDepth(6);
           }
-          if (ch === 'N') { this.add.image(x * TILE + 16, y * TILE + 16, NPCS[house.owner].tex).setScale(2).setDepth(5); this.ownerTile = { x, y }; }
+          if (ch === 'N') {
+            this.add.image(x * TILE + 16, y * TILE + 16, NPCS[house.owner].tex).setScale(2).setDepth(5);
+            this.ownerTile = { x, y };
+            this.makeMark(x, y, house.owner);
+          }
           if (ch === 'D') this.exitTile = { x, y };
           continue;
         }
@@ -399,6 +404,7 @@ class World extends Phaser.Scene {
         this.add.image(x * TILE + 16, y * TILE + 16, NPCS[ch].tex).setScale(2).setDepth(5);
         this.blocked.add(x + ',' + y);
         this.npcs[x + ',' + y] = ch;
+        this.makeMark(x, y, ch);
       } else if (ch === 'b' && GS.quest.dodo === 'taken') {
         // 朵朵的作业本（只在接了委托后出现）
         const spr = this.add.image(x * TILE + 16, y * TILE + 16, 'frag').setScale(2).setDepth(4).setTint(0x9fd8f0);
@@ -471,6 +477,10 @@ class World extends Phaser.Scene {
 
     // --- 对话框 ---
     this.dialog = new DialogBox(this);
+
+    // --- 头顶标记：定时刷新 ---
+    this.refreshMarks();
+    this.time.addEvent({ delay: 500, loop: true, callback: () => this.refreshMarks() });
 
     // --- 唤醒（战斗结束回来） ---
     this.events.on('wake', () => this.onWake());
@@ -708,6 +718,64 @@ class World extends Phaser.Scene {
     }
   }
 
+  // 头顶标记：! = 有新话/任务可推进，? = 任务进行中还没到时候，null = 不用管
+  // 传话委托要来回跑，所以标记必须跟着进度实时变
+  npcMark(id) {
+    const npc = NPCS[id];
+    if (!npc) return null;
+    const talked = (GS.talked || []).includes(GS.chapter + ':' + id);
+    switch (npc.role) {
+      case 'clue': return GS.clues.includes(npc.clue) ? null : '!';
+      case 'lore': return GS.chapter === 1
+        ? (GS.clues.includes('c2d') ? null : '!')
+        : (talked ? null : '!');
+      case 'quest': {
+        if (GS.chapter === 1) {                    // 小满：传话
+          const st = GS.quest.step;
+          if (!st) return '!';                     // 还没接
+          if (st === 'back_girl') return '!';       // 该把阿力的话带回来
+          if (st === 'done') return null;
+          return '?';
+        }
+        const st = GS.quest.dodo;                  // 朵朵：取物
+        if (!st) return '!';
+        if (st === 'found') return '!';            // 捡到了，回去交
+        if (st === 'done') return null;
+        return '?';
+      }
+      case 'chat': {
+        if (GS.chapter === 1) {                    // 阿力兼传话对象
+          const st = GS.quest.step;
+          if (st === 'ask_boy' || st === 'back_boy') return '!';
+          if (st === 'back_girl') return '?';
+        }
+        return talked ? null : '!';
+      }
+      case 'elder':
+        if (GS.flags.boss && GS.chapter + 1 < CHAPTERS.length) return '!';   // 可以出发去下一章
+        return talked ? null : '!';
+      default: return null;                        // 商人/老师是服务，不标
+    }
+  }
+
+  // 每半秒刷一遍：比在每处状态变更里手动挂钩可靠得多
+  refreshMarks() {
+    (this.marks || []).forEach(m => {
+      const t = this.npcMark(m.id);
+      m.txt.setText(t || '').setColor(t === '!' ? '#ffe14d' : '#a8b0c8');
+      m.txt.setVisible(!!t);
+    });
+  }
+
+  makeMark(x, y, id) {
+    const txt = this.add.text(x * TILE + 16, y * TILE - 8, '', {
+      fontSize: '26px', fontFamily: FONT, fontStyle: 'bold',
+      stroke: '#1a1a22', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(20);
+    this.tweens.add({ targets: txt, y: txt.y - 6, duration: 600, yoyo: true, repeat: -1 });
+    (this.marks = this.marks || []).push({ id, txt });
+  }
+
   // 记下线索：屏幕闪一下，孩子才知道"这句话被存起来了"
   addClue(key) {
     if (GS.clues.includes(key)) return false;
@@ -722,6 +790,9 @@ class World extends Phaser.Scene {
   }
 
   talkNpc(id) {
+    GS.talked = GS.talked || [];
+    const tk = GS.chapter + ':' + id;
+    if (!GS.talked.includes(tk)) { GS.talked.push(tk); saveGame(); }
     const npc = NPCS[id];
     if (npc && npc.role === 'clue')   { this.npcClue(id, npc); return; }
     if (npc && npc.role === 'quest')  { this.npcQuest(id, npc); return; }

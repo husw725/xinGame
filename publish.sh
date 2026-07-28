@@ -25,7 +25,10 @@ p.write_text(s)
 PYEOF
 echo "版本戳 $STAMP"
 
-# 发布前必须过校验：这两处错了会卡死玩家
+# 发布前必须过校验
+echo "--- 启动自检（能不能跑起来）---"
+node boot_check.js > /dev/null || { echo "✗ boot_check.js 未通过：游戏起不来，已中止发布"; exit 1; }
+echo "✓ 通过"
 echo "--- 数值平衡校验 ---"
 node balance_sim.js  > /dev/null || { echo "✗ balance_sim.js 未通过，已中止发布"; exit 1; }
 echo "✓ 通过"

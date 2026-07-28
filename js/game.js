@@ -1988,6 +1988,186 @@ class Battle extends Phaser.Scene {
   }
 }
 
+// ============ 推箱子迷宫 ============
+class Puzzle extends Phaser.Scene {
+  constructor() { super('Puzzle'); }
+
+  init(data) { this.roomIdx = data.room || 0; }
+
+  create() {
+    const lv = SOKOBAN[this.roomIdx];
+    this.lv = lv;
+    this.rows = lv.rows;
+    this.gw = this.rows[0].length;
+    this.gh = this.rows.length;
+    this.cell = 48;
+    this.ox = (W - this.gw * this.cell) / 2;
+    this.oy = 122;
+    this.done = false;
+
+    this.add.rectangle(W / 2, H / 2, W, H, 0x1a1a22);
+    this.add.text(W / 2, 44, lv.name, { fontSize: '26px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(W / 2, 82, `迷宫 ${this.roomIdx + 1} / ${SOKOBAN.length}`, { fontSize: '17px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
+
+    // 地面与墙
+    for (let y = 0; y < this.gh; y++) {
+      for (let x = 0; x < this.gw; x++) {
+        const wall = this.rows[y][x] === '#';
+        this.add.image(this.px(x), this.py(y), wall ? 't_dwall' : 't_dfloor')
+          .setDisplaySize(this.cell, this.cell);
+      }
+    }
+
+    // 凹槽（写着口诀）
+    lv.goals.forEach(g => {
+      this.add.image(this.px(g.x), this.py(g.y), 'plate').setDisplaySize(this.cell, this.cell);
+      const m = Math.min(g.a, g.b), M = Math.max(g.a, g.b);
+      // 口诀两个字要够大够清楚 —— 描边压住凹槽的金边，孩子才读得清
+      this.add.text(this.px(g.x), this.py(g.y), `${CN[m]}${CN[M]}`,
+        { fontSize: '21px', fontFamily: FONT, color: '#ffe9a8', fontStyle: 'bold',
+          stroke: '#241a08', strokeThickness: 4 }).setOrigin(0.5).setDepth(3);
+    });
+
+    // 箱子
+    this.boxes = lv.boxes.map(b => {
+      const spr = this.add.image(this.px(b.x), this.py(b.y), 'crate').setDisplaySize(this.cell, this.cell).setDepth(5);
+      const txt = this.add.text(this.px(b.x), this.py(b.y), String(b.val),
+        { fontSize: '22px', fontFamily: FONT, color: '#3a2410', fontStyle: 'bold' }).setOrigin(0.5).setDepth(6);
+      return { x: b.x, y: b.y, val: b.val, spr, txt };
+    });
+
+    // 玩家
+    let st = { x: 1, y: 1 };
+    for (let y = 0; y < this.gh; y++) for (let x = 0; x < this.gw; x++) if (this.rows[y][x] === '@') st = { x, y };
+    this.pos = { ...st };
+    this.hero = this.add.image(this.px(st.x), this.py(st.y), 'hero_d').setDisplaySize(this.cell * 0.9, this.cell * 0.9).setDepth(10);
+
+    // 提示条
+    this.tip = this.add.text(W / 2, this.oy + this.gh * this.cell + 26, '把得数对的箱子推到凹槽上',
+      { fontSize: '18px', fontFamily: FONT, color: '#c8d4f0', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5);
+
+    // 控制：方向键 + 重置 + 求助 + 离开
+    this.makePad();
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.queued = null;
+    this.moving = false;
+  }
+
+  px(x) { return this.ox + x * this.cell + this.cell / 2; }
+  py(y) { return this.oy + y * this.cell + this.cell / 2; }
+
+  makePad() {
+    const cx = 100, cy = 690, gap = 66, sz = 62;
+    [['up', cx, cy - gap, '▲'], ['down', cx, cy + gap, '▼'], ['left', cx - gap, cy, '◀'], ['right', cx + gap, cy, '▶']]
+      .forEach(([d, x, y, ch]) => {
+        const r = this.add.rectangle(x, y, sz, sz, 0x2c3e6b, 0.85).setStrokeStyle(2, 0xf4e6c0).setInteractive();
+        this.add.text(x, y, ch, { fontSize: '22px', color: '#fff' }).setOrigin(0.5);
+        r.on('pointerdown', () => { if (!this.done) this.queued = d; });
+      });
+    makeButton(this, 350, 645, 180, 52, '↺ 重来', () => this.scene.restart({ room: this.roomIdx }), { fontSize: '20px', color: 0x6b4a2c });
+    makeButton(this, 350, 705, 180, 52, '💡 求助', () => this.showHint(), { fontSize: '20px', color: 0x3a6b45 });
+    makeButton(this, 350, 765, 180, 52, '🚪 离开', () => this.leave(), { fontSize: '20px' });
+  }
+
+  showHint() {
+    const need = this.lv.goals.map(g => `${CN[Math.min(g.a,g.b)]}${CN[Math.max(g.a,g.b)]} 要 ${g.a * g.b}`).join('，');
+    this.tip.setText(`${this.lv.hint}\n（${need}）`);
+  }
+
+  update() {
+    if (this.done || this.moving) return;
+    let d = this.queued; this.queued = null;
+    if (!d) {
+      if (this.cursors.up.isDown) d = 'up';
+      else if (this.cursors.down.isDown) d = 'down';
+      else if (this.cursors.left.isDown) d = 'left';
+      else if (this.cursors.right.isDown) d = 'right';
+    }
+    if (d) this.step(d);
+  }
+
+  step(dir) {
+    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+    this.hero.setTexture({ up: 'hero_u', down: 'hero_d', left: 'hero_s', right: 'hero_s' }[dir])
+      .setFlipX(dir === 'left');
+    const nx = this.pos.x + dx, ny = this.pos.y + dy;
+    if (this.isWall(nx, ny)) return;
+
+    const box = this.boxes.find(b => b.x === nx && b.y === ny);
+    if (box) {
+      const bx = nx + dx, by = ny + dy;
+      if (this.isWall(bx, by)) return;
+      if (this.boxes.some(b => b.x === bx && b.y === by)) return;
+      box.x = bx; box.y = by;
+      this.tweens.add({ targets: [box.spr, box.txt], x: this.px(bx), y: this.py(by), duration: 130 });
+    }
+
+    this.moving = true;
+    this.pos = { x: nx, y: ny };
+    this.tweens.add({
+      targets: this.hero, x: this.px(nx), y: this.py(ny), duration: 130,
+      onComplete: () => { this.moving = false; if (box) this.checkWin(); },
+    });
+  }
+
+  isWall(x, y) {
+    return x < 0 || y < 0 || x >= this.gw || y >= this.gh || this.rows[y][x] === '#';
+  }
+
+  checkWin() {
+    const ok = this.lv.goals.every(g =>
+      this.boxes.some(b => b.x === g.x && b.y === g.y && b.val === g.a * g.b));
+    if (!ok) {
+      // 给点即时反馈：踩对格子但数字错了要说出来
+      const wrong = this.lv.goals.find(g => this.boxes.some(b => b.x === g.x && b.y === g.y && b.val !== g.a * g.b));
+      if (wrong) this.tip.setText(`凹槽写的是 ${CN[Math.min(wrong.a,wrong.b)]}${CN[Math.max(wrong.a,wrong.b)]}，\n得数不是这个箱子上的数哦。↺ 重来试试`);
+      return;
+    }
+    this.done = true;
+    this.cameras.main.flash(300, 255, 240, 180);
+    if (!GS.rooms.includes(this.roomIdx)) GS.rooms.push(this.roomIdx);
+
+    const lines = ['石门轰隆一声打开了！'];
+    const rw = this.lv.reward;
+    if (rw.kind === 'gold') { GS.p.gold += rw.val; lines.push(`房间深处有 💰${rw.val} 金币！`); }
+    else if (rw.kind === 'frag' && !GS.frags.includes(rw.idx)) {
+      GS.frags.push(rw.idx);
+      lines.push('地上有一页发黄的纸……', FRAGMENTS[rw.idx].text, `（本章记忆碎片 ${GS.frags.length}/8）`);
+    }
+    const allDone = SOKOBAN.every((_, i) => GS.rooms.includes(i));
+    if (allDone) { GS.flags.puzzle = true; lines.push('三间石室都解开了！\n沙漠深处的大石门应该开了。'); }
+    saveGame();
+
+    this.panel(lines, () => {
+      const next = SOKOBAN.findIndex((_, i) => !GS.rooms.includes(i));
+      if (next >= 0) this.scene.restart({ room: next });
+      else this.leave();
+    });
+  }
+
+  // 简易顺序消息面板（迷宫内部专用）
+  panel(lines, cb) {
+    const bg = this.add.rectangle(W / 2, H / 2, 456, 300, 0x14182e, 0.97).setStrokeStyle(4, 0xf4e6c0).setDepth(100);
+    const txt = this.add.text(W / 2, H / 2 - 30, '', { fontSize: '21px', fontFamily: FONT, color: '#fff',
+      align: 'center', wordWrap: { width: 410 }, lineSpacing: 8 }).setOrigin(0.5).setDepth(101);
+    const q = lines.slice();
+    const btn = makeButton(this, W / 2, H / 2 + 100, 200, 54, '继续', () => {
+      if (q.length) { txt.setText(q.shift()); return; }
+      bg.destroy(); txt.destroy(); btn.destroy();
+      cb();
+    }, { fontSize: '20px' });
+    btn.bg.setDepth(101); btn.txt.setDepth(102);
+    txt.setText(q.shift());
+  }
+
+  leave() {
+    GS.fromPuzzle = true;
+    saveGame();
+    this.scene.stop();
+    this.scene.wake('World');
+  }
+}
+
 // ============ 分糖机关（第2章）============
 // 把"平均分"从算式变成手上的动作：点盘子放糖，每盘必须一样多，
 // 分不完的留在中间 —— 那就是余数。

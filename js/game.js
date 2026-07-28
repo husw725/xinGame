@@ -13,6 +13,8 @@ function defaultState() {
       bag: [], // 备用装备
     },
     chapter: 0,
+    indoor: null,   // 在哪间屋里（门坐标），null=在外面
+    outPos: null,   // 进屋前站在哪
     flags: { intro: false, boss: false, puzzle: false },
     clues: [],    // 已记下的线索 key
     quest: {},    // 支线状态：dodo = null/'taken'/'found'/'done'
@@ -305,6 +307,13 @@ class World extends Phaser.Scene {
 
   create() {
     loadChapter(GS.chapter || 0);
+    // 室内就是另一张地图，在同一个场景里切换 —— 这样对话/商店/战斗全都自然可用
+    this.indoor = GS.indoor || null;
+    const house = this.indoor ? HOUSES[this.indoor] : null;
+    this.rows = house ? house.rows : MAP;
+    this.gw = this.rows[0].length;
+    this.gh = this.rows.length;
+    this.houseName = house ? house.name : null;
     this.moving = false;
     this.inBattle = false;
     this.held = null;
@@ -323,10 +332,23 @@ class World extends Phaser.Scene {
     this.hidden = {};    // "x,y" -> 碎片编号（需放大镜）
     let chestN = 0, fragN = 0, hidN = 0;
 
-    for (let y = 0; y < MAPH; y++) {
-      for (let x = 0; x < MAPW; x++) {
-        const ch = MAP[y][x];
+    const IN_TEX = { W:'t_iwall', F:'t_floor', D:'t_exit', u:'t_cabinet', t:'t_table', p:'t_plant', B:'t_bed', N:'t_floor' };
+    for (let y = 0; y < this.gh; y++) {
+      for (let x = 0; x < this.gw; x++) {
+        const ch = this.rows[y][x];
         const key = x + ',' + y;
+        if (this.indoor) {
+          this.add.image(x * TILE + 16, y * TILE + 16, 't_floor').setScale(2);
+          this.add.image(x * TILE + 16, y * TILE + 16, IN_TEX[ch] || 't_floor').setScale(2);
+          if (HOUSE_BLOCK.includes(ch)) this.blocked.add(key);
+          if ('utp'.includes(ch)) { this.furn = this.furn || {}; this.furn[key] = true;
+            if ((GS.searched[this.indoor] || []).includes(key))
+              this.add.text(x * TILE + 16, y * TILE + 2, '·', { fontSize: '16px', color: '#8a7548' }).setOrigin(0.5).setDepth(6);
+          }
+          if (ch === 'N') { this.add.image(x * TILE + 16, y * TILE + 16, NPCS[house.owner].tex).setScale(2).setDepth(5); this.ownerTile = { x, y }; }
+          if (ch === 'D') this.exitTile = { x, y };
+          continue;
+        }
         let tex = TILE_TEX[ch];
         if (!tex) tex = GS.chapter === 0 ? (y < 15 ? 't_grass' : 't_sand') : 't_stone';
         this.add.image(x * TILE + 16, y * TILE + 16, tex).setScale(2);
@@ -371,7 +393,7 @@ class World extends Phaser.Scene {
     }
 
     // --- NPC ---
-    for (let y = 0; y < MAPH; y++) for (let x = 0; x < MAPW; x++) {
+    if (!this.indoor) for (let y = 0; y < MAPH; y++) for (let x = 0; x < MAPW; x++) {
       const ch = MAP[y][x];
       if (NPCS[ch]) {
         this.add.image(x * TILE + 16, y * TILE + 16, NPCS[ch].tex).setScale(2).setDepth(5);
@@ -388,14 +410,14 @@ class World extends Phaser.Scene {
     // --- 水晶 & 魔王 ---
     this.bossTile = CHAPTER.bossTile;
     const ct = CHAPTER.crystalTile;
-    if (!GS.flags.boss) {
+    if (!GS.flags.boss && !this.indoor) {
       this.crystal = this.add.image(ct.x * TILE + 16, ct.y * TILE + 16, 'crystal').setScale(2).setDepth(5);
       this.tweens.add({ targets: this.crystal, alpha: 0.5, duration: 700, yoyo: true, repeat: -1 });
       this.bossSprite = this.add.image(this.bossTile.x * TILE + 16, this.bossTile.y * TILE + 10, ENEMIES[CHAPTER.boss].tex).setScale(2.5).setDepth(6);
     }
 
     // --- 小怪 ---
-    SPAWNS.forEach((s, i) => {
+    if (!this.indoor) SPAWNS.forEach((s, i) => {
       const spr = this.add.image(s.x * TILE + 16, s.y * TILE + 16, ENEMIES[s.k].tex).setScale(2).setDepth(6);
       this.mobs.push({ id: i, k: s.k, x: s.x, y: s.y, home: { x: s.x, y: s.y }, sprite: spr, dead: false });
       this.time.addEvent({ delay: 900 + i * 173, loop: true, callback: () => this.mobStep(this.mobs[i]) });
@@ -406,13 +428,27 @@ class World extends Phaser.Scene {
     this.checkRevenge();
 
     // --- 玩家（位置持久化，从迷宫/战斗回来不会被传送回村） ---
-    const st = GS.pos || PLAYER_START;
+    let st = GS.pos || PLAYER_START;
+    if (this.indoor) {
+      let ex = null;
+      for (let y = 0; y < this.gh; y++) for (let x = 0; x < this.gw; x++) if (this.rows[y][x] === 'D') ex = { x, y };
+      st = { x: ex.x, y: ex.y - 1 };
+    }
     this.px = st.x; this.py = st.y;
     this.player = this.add.image(this.px * TILE + 16, this.py * TILE + 16, 'hero_d').setScale(2).setDepth(10);
 
     // --- 相机 ---
-    this.cameras.main.setBounds(0, 0, MAPW * TILE, MAPH * TILE);
-    this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+    if (this.indoor) {
+      this.cameras.main.removeBounds();
+      this.cameras.main.centerOn(this.gw * TILE / 2, this.gh * TILE / 2 - 40);
+      this.add.text(W / 2, 60, this.houseName, { fontSize: '26px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' })
+        .setOrigin(0.5).setScrollFactor(0).setDepth(100);
+      this.add.text(W / 2, 96, '面朝柜子按 A 就能翻一翻　·　走到门口出去',
+        { fontSize: '15px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+    } else {
+      this.cameras.main.setBounds(0, 0, MAPW * TILE, MAPH * TILE);
+      this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+    }
 
     // --- HUD ---
     this.hudBg = this.add.rectangle(120, 36, 224, 56, 0x14182e, 0.85).setScrollFactor(0).setDepth(100).setStrokeStyle(2, 0xf4e6c0);
@@ -521,8 +557,16 @@ class World extends Phaser.Scene {
     if (this.moving) return false;
     const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.facing || 'down'];
     const nx = this.px + dx, ny = this.py + dy;
-    if (nx < 0 || ny < 0 || nx >= MAPW || ny >= MAPH) return false;
-    const key = nx + ',' + ny, ch = MAP[ny][nx];
+    if (nx < 0 || ny < 0 || nx >= this.gw || ny >= this.gh) return false;
+    const key = nx + ',' + ny;
+    if (this.indoor) {
+      const c = this.rows[ny][nx];
+      if (c === 'N') { this.talkNpc(HOUSES[this.indoor].owner); return true; }
+      if (this.furn && this.furn[key]) { this.searchFurn(key, nx, ny); return true; }
+      if (c === 'D') { this.leaveHouse(); return true; }
+      return false;
+    }
+    const ch = MAP[ny][nx];
 
     if (this.npcs[key]) { this.talkNpc(this.npcs[key]); return true; }
     if (this.chests[key] !== undefined && !GS.chests.includes(this.chests[key])) {
@@ -570,7 +614,7 @@ class World extends Phaser.Scene {
     // 但必须留宽限期 —— 开战有 260ms 转场，这段时间子场景还没起来，
     // 提前解锁会让玩家按住的方向继续生效，一步踏进下一只怪，战斗套战斗出不来。
     if (this.inBattle) {
-      const running = ['Battle', 'House', 'Puzzle', 'Candy'].some(k => this.scene.isActive(k));
+      const running = ['Battle', 'Puzzle', 'Candy'].some(k => this.scene.isActive(k));
       if (running) this.lockedAt = 0;
       else {
         if (!this.lockedAt) this.lockedAt = this.time.now;
@@ -594,8 +638,18 @@ class World extends Phaser.Scene {
     const tex = { up: 'hero_u', down: 'hero_d', left: 'hero_s', right: 'hero_s' }[dir];
     this.player.setTexture(tex).setFlipX(dir === 'left');
     const nx = this.px + delta[0], ny = this.py + delta[1];
-    if (nx < 0 || ny < 0 || nx >= MAPW || ny >= MAPH) return;
+    if (nx < 0 || ny < 0 || nx >= this.gw || ny >= this.gh) return;
     const key = nx + ',' + ny;
+
+    // ---- 室内 ----
+    if (this.indoor) {
+      if (this.rows[ny][nx] === 'D') { this.leaveHouse(); return; }
+      if (this.blocked.has(key)) return;                 // 家具/屋主挡住，按 A 才交互
+      this.moving = true; this.px = nx; this.py = ny;
+      this.tweens.add({ targets: this.player, x: nx * TILE + 16, y: ny * TILE + 16,
+        duration: Math.max(70, 150 - totalSpd() * 12), onComplete: () => { this.moving = false; } });
+      return;
+    }
 
     // 怪物
     const mob = this.mobs.find(m => !m.dead && m.x === nx && m.y === ny);
@@ -916,7 +970,7 @@ class World extends Phaser.Scene {
     GS.flags = { intro: false, boss: false, puzzle: false };
     GS.chests = []; GS.locks = []; GS.rooms = [];
     GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pool = [];
-    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.fromHouse = null;
+    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.indoor = null; GS.outPos = null;
     loadChapter(idx);
     GS.p.hp = GS.p.maxhp; GS.p.mp = GS.p.maxmp;
     saveGame();
@@ -1358,12 +1412,40 @@ class World extends Phaser.Scene {
   }
 
   enterHouse(key) {
-    this.inBattle = true;          // 借用同一个锁，停掉地图输入
-    this.lockedAt = 0;
-    this.held = null; this.queued = null;
+    GS.indoor = key;
+    GS.outPos = { x: this.px, y: this.py };   // 记住门外站哪，出来时回到原地
+    GS.searched[key] = GS.searched[key] || [];
+    saveGame();
     this.cameras.main.resetFX();
-    this.scene.launch('House', { door: key });
-    this.scene.sleep();
+    this.scene.restart();
+  }
+
+  leaveHouse() {
+    const back = GS.outPos || null;
+    GS.indoor = null; GS.outPos = null;
+    if (back) GS.pos = back;
+    saveGame();
+    this.cameras.main.resetFX();
+    this.scene.restart();
+  }
+
+  // 翻家具：大部分是空的，偶尔有惊喜
+  searchFurn(key, x, y) {
+    const list = GS.searched[this.indoor];
+    if (list.includes(key)) { this.dialog.say(['这里已经翻过了。']); return; }
+    list.push(key);
+    const loot = rollLoot();
+    let text;
+    if (loot.kind === 'none') text = loot.msgs[Phaser.Math.Between(0, loot.msgs.length - 1)];
+    else if (loot.kind === 'gold') { const n = Phaser.Math.Between(loot.min, loot.max); GS.p.gold += n; text = loot.msg.replace('{n}', n); }
+    else if (loot.kind === 'potion') { GS.p.potion++; text = loot.msg; }
+    else if (loot.kind === 'ether')  { GS.p.ether++;  text = loot.msg; }
+    else if (loot.kind === 'scroll') { GS.p.scroll++; text = loot.msg; }
+    else if (loot.kind === 'herb')   { GS.p.mp = GS.p.maxmp; text = loot.msg; }
+    saveGame(); this.updateHUD();
+    this.add.text(x * TILE + 16, y * TILE + 2, '·', { fontSize: '16px', color: '#8a7548' }).setOrigin(0.5).setDepth(6);
+    if (loot.kind !== 'none') this.cameras.main.flash(180, 255, 240, 180);
+    this.dialog.say([text]);
   }
 
   enterDungeon() {
@@ -1420,22 +1502,6 @@ class World extends Phaser.Scene {
       GS.fromPuzzle = false;
       saveGame();
       this.scene.restart();
-      return;
-    }
-    // 从屋里出来：站回门口下方
-    if (GS.fromHouse) {
-      const [hx, hy] = GS.fromHouse.split(',').map(Number);
-      GS.fromHouse = null;
-      this.px = hx; this.py = hy + 1;
-      GS.pos = { x: this.px, y: this.py };
-      this.player.setPosition(this.px * TILE + 16, this.py * TILE + 16);
-      saveGame(); this.updateHUD();
-      return;
-    }
-    // 在屋里和屋主说话
-    if (GS.houseOwner) {
-      const owner = GS.houseOwner; GS.houseOwner = null;
-      this.time.delayedCall(200, () => this.talkNpc(owner));
       return;
     }
 
@@ -1922,342 +1988,6 @@ class Battle extends Phaser.Scene {
   }
 }
 
-// ============ 室内（进屋、翻柜子） ============
-class House extends Phaser.Scene {
-  constructor() { super('House'); }
-  init(data) { this.doorKey = data.door; }
-
-  create() {
-    const h = HOUSES[this.doorKey];
-    this.h = h;
-    this.rows = h.rows;
-    this.gw = this.rows[0].length;
-    this.gh = this.rows.length;
-    this.cell = 52;
-    this.ox = (W - this.gw * this.cell) / 2;
-    this.oy = 150;
-    this.searched = GS.searched[this.doorKey] = GS.searched[this.doorKey] || [];
-
-    this.add.rectangle(W / 2, H / 2, W, H, 0x1a1410);
-    this.add.text(W / 2, 60, h.name, { fontSize: '28px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
-    this.add.text(W / 2, 100, '面朝柜子按 A 就能翻一翻', { fontSize: '16px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
-
-    const TEX = { W: 't_iwall', F: 't_floor', D: 't_exit', u: 't_cabinet', t: 't_table', p: 't_plant', B: 't_bed', N: 't_floor' };
-    this.furn = {};
-    for (let y = 0; y < this.gh; y++) for (let x = 0; x < this.gw; x++) {
-      const ch = this.rows[y][x];
-      if (ch !== 'W') this.add.image(this.px(x), this.py(y), 't_floor').setDisplaySize(this.cell, this.cell);
-      this.add.image(this.px(x), this.py(y), TEX[ch] || 't_floor').setDisplaySize(this.cell, this.cell);
-      if ('utp'.includes(ch)) {
-        this.furn[x + ',' + y] = true;
-        if (this.searched.includes(x + ',' + y)) {
-          this.add.text(this.px(x), this.py(y) - 16, '·', { fontSize: '18px', color: '#8a7548' }).setOrigin(0.5).setDepth(6);
-        }
-      }
-      if (ch === 'N') {
-        this.add.image(this.px(x), this.py(y), NPCS[h.owner].tex).setDisplaySize(this.cell * 0.9, this.cell * 0.9).setDepth(5);
-        this.ownerTile = { x, y };
-      }
-      if (ch === 'D') this.exitTile = { x, y };
-    }
-
-    // 玩家从门口进来
-    this.pos = { x: this.exitTile.x, y: this.exitTile.y - 1 };
-    this.hero = this.add.image(this.px(this.pos.x), this.py(this.pos.y), 'hero_u')
-      .setDisplaySize(this.cell * 0.9, this.cell * 0.9).setDepth(10);
-
-    this.msg = this.add.text(W / 2, this.oy + this.gh * this.cell + 30, '',
-      { fontSize: '20px', fontFamily: FONT, color: '#fff2c0', align: 'center', wordWrap: { width: 430 } }).setOrigin(0.5);
-
-    this.makePad();
-    this.makeABHouse();
-    this.facing = 'up';
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.queued = null; this.moving = false; this.busy = false;
-  }
-
-  px(x) { return this.ox + x * this.cell + this.cell / 2; }
-  py(y) { return this.oy + y * this.cell + this.cell / 2; }
-
-  makePad() {
-    const cx = 100, cy = 726, gap = 66, sz = 62;
-    [['up', cx, cy - gap, '▲'], ['down', cx, cy + gap, '▼'], ['left', cx - gap, cy, '◀'], ['right', cx + gap, cy, '▶']]
-      .forEach(([d, x, y, ch]) => {
-        const r = this.add.rectangle(x, y, sz, sz, 0x2c3e6b, 0.85).setStrokeStyle(2, 0xf4e6c0).setInteractive();
-        this.add.text(x, y, ch, { fontSize: '22px', color: '#fff' }).setOrigin(0.5);
-        r.on('pointerdown', () => { if (!this.busy) this.queued = d; });
-      });
-  }
-
-  // 室内也支持 A/B：A=查看面前的东西，B=出去
-  makeABHouse() {
-    const A = makeButton(this, 392, 690, 80, 80, 'A', () => {
-      if (this.busy) return;
-      const f = this.facing || 'up';
-      const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[f];
-      const nx = this.pos.x + dx, ny = this.pos.y + dy;
-      const ch = (this.rows[ny] || '')[nx];
-      if (ch === 'N') { this.busy = true; this.talkOwner(); }
-      else if (this.furn[nx + ',' + ny]) { this.busy = true; this.search(nx, ny); }
-      else if (ch === 'D') this.leave();
-    }, { fontSize: '30px', color: 0x3a6b45 });
-    const B = makeButton(this, 306, 756, 68, 68, 'B', () => {
-      this.msg.setText('从门口走出去就行。');
-      this.time.delayedCall(1200, () => this.msg.setText(''));
-    }, { fontSize: '26px', color: 0x8a3a3a });
-    [A, B].forEach(b => { b.bg.setDepth(90); b.txt.setDepth(91); });
-  }
-
-  update() {
-    if (this.moving || this.busy) return;
-    let d = this.queued; this.queued = null;
-    if (!d) {
-      if (this.cursors.up.isDown) d = 'up';
-      else if (this.cursors.down.isDown) d = 'down';
-      else if (this.cursors.left.isDown) d = 'left';
-      else if (this.cursors.right.isDown) d = 'right';
-    }
-    if (d) this.step(d);
-  }
-
-  step(dir) {
-    this.facing = dir;
-    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
-    this.hero.setTexture({ up: 'hero_u', down: 'hero_d', left: 'hero_s', right: 'hero_s' }[dir]).setFlipX(dir === 'left');
-    const nx = this.pos.x + dx, ny = this.pos.y + dy;
-    if (nx < 0 || ny < 0 || nx >= this.gw || ny >= this.gh) return;
-    const ch = this.rows[ny][nx];
-
-    if (ch === 'D') { this.leave(); return; }        // 走到门口就出去
-    if (HOUSE_BLOCK.includes(ch)) return;              // 家具/屋主挡住，要按 A 才查看
-
-    this.moving = true;
-    this.pos = { x: nx, y: ny };
-    this.tweens.add({ targets: this.hero, x: this.px(nx), y: this.py(ny), duration: 120,
-      onComplete: () => { this.moving = false; } });
-  }
-
-  // 翻家具：大部分是空的，偶尔有惊喜
-  search(x, y) {
-    const key = x + ',' + y;
-    if (this.searched.includes(key)) {
-      this.msg.setText('这里已经翻过了。');
-      this.time.delayedCall(900, () => { this.msg.setText(''); this.busy = false; });
-      return;
-    }
-    this.searched.push(key);
-    const loot = rollLoot();
-    let text;
-    if (loot.kind === 'none') {
-      text = loot.msgs[Phaser.Math.Between(0, loot.msgs.length - 1)];
-    } else if (loot.kind === 'gold') {
-      const n = Phaser.Math.Between(loot.min, loot.max);
-      GS.p.gold += n; text = loot.msg.replace('{n}', n);
-    } else if (loot.kind === 'potion') { GS.p.potion++; text = loot.msg; }
-    else if (loot.kind === 'ether')    { GS.p.ether++;  text = loot.msg; }
-    else if (loot.kind === 'scroll')   { GS.p.scroll++; text = loot.msg; }
-    else if (loot.kind === 'herb')     { GS.p.mp = GS.p.maxmp; text = loot.msg; }
-    saveGame();
-    this.add.text(this.px(x), this.py(y) - 16, '·', { fontSize: '18px', color: '#8a7548' }).setOrigin(0.5).setDepth(6);
-    this.msg.setText(text);
-    if (loot.kind !== 'none') this.cameras.main.flash(180, 255, 240, 180);
-    this.time.delayedCall(1400, () => { this.msg.setText(''); this.busy = false; });
-  }
-
-  talkOwner() {
-    GS.houseOwner = this.h.owner;
-    this.scene.stop();
-    this.scene.wake('World');
-  }
-
-  leave() {
-    GS.fromHouse = this.doorKey;
-    saveGame();
-    this.scene.stop();
-    this.scene.wake('World');
-  }
-}
-
-// ============ 推箱子迷宫 ============
-class Puzzle extends Phaser.Scene {
-  constructor() { super('Puzzle'); }
-
-  init(data) { this.roomIdx = data.room || 0; }
-
-  create() {
-    const lv = SOKOBAN[this.roomIdx];
-    this.lv = lv;
-    this.rows = lv.rows;
-    this.gw = this.rows[0].length;
-    this.gh = this.rows.length;
-    this.cell = 48;
-    this.ox = (W - this.gw * this.cell) / 2;
-    this.oy = 122;
-    this.done = false;
-
-    this.add.rectangle(W / 2, H / 2, W, H, 0x1a1a22);
-    this.add.text(W / 2, 44, lv.name, { fontSize: '26px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
-    this.add.text(W / 2, 82, `迷宫 ${this.roomIdx + 1} / ${SOKOBAN.length}`, { fontSize: '17px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
-
-    // 地面与墙
-    for (let y = 0; y < this.gh; y++) {
-      for (let x = 0; x < this.gw; x++) {
-        const wall = this.rows[y][x] === '#';
-        this.add.image(this.px(x), this.py(y), wall ? 't_dwall' : 't_dfloor')
-          .setDisplaySize(this.cell, this.cell);
-      }
-    }
-
-    // 凹槽（写着口诀）
-    lv.goals.forEach(g => {
-      this.add.image(this.px(g.x), this.py(g.y), 'plate').setDisplaySize(this.cell, this.cell);
-      const m = Math.min(g.a, g.b), M = Math.max(g.a, g.b);
-      // 口诀两个字要够大够清楚 —— 描边压住凹槽的金边，孩子才读得清
-      this.add.text(this.px(g.x), this.py(g.y), `${CN[m]}${CN[M]}`,
-        { fontSize: '21px', fontFamily: FONT, color: '#ffe9a8', fontStyle: 'bold',
-          stroke: '#241a08', strokeThickness: 4 }).setOrigin(0.5).setDepth(3);
-    });
-
-    // 箱子
-    this.boxes = lv.boxes.map(b => {
-      const spr = this.add.image(this.px(b.x), this.py(b.y), 'crate').setDisplaySize(this.cell, this.cell).setDepth(5);
-      const txt = this.add.text(this.px(b.x), this.py(b.y), String(b.val),
-        { fontSize: '22px', fontFamily: FONT, color: '#3a2410', fontStyle: 'bold' }).setOrigin(0.5).setDepth(6);
-      return { x: b.x, y: b.y, val: b.val, spr, txt };
-    });
-
-    // 玩家
-    let st = { x: 1, y: 1 };
-    for (let y = 0; y < this.gh; y++) for (let x = 0; x < this.gw; x++) if (this.rows[y][x] === '@') st = { x, y };
-    this.pos = { ...st };
-    this.hero = this.add.image(this.px(st.x), this.py(st.y), 'hero_d').setDisplaySize(this.cell * 0.9, this.cell * 0.9).setDepth(10);
-
-    // 提示条
-    this.tip = this.add.text(W / 2, this.oy + this.gh * this.cell + 26, '把得数对的箱子推到凹槽上',
-      { fontSize: '18px', fontFamily: FONT, color: '#c8d4f0', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5);
-
-    // 控制：方向键 + 重置 + 求助 + 离开
-    this.makePad();
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.queued = null;
-    this.moving = false;
-  }
-
-  px(x) { return this.ox + x * this.cell + this.cell / 2; }
-  py(y) { return this.oy + y * this.cell + this.cell / 2; }
-
-  makePad() {
-    const cx = 100, cy = 690, gap = 66, sz = 62;
-    [['up', cx, cy - gap, '▲'], ['down', cx, cy + gap, '▼'], ['left', cx - gap, cy, '◀'], ['right', cx + gap, cy, '▶']]
-      .forEach(([d, x, y, ch]) => {
-        const r = this.add.rectangle(x, y, sz, sz, 0x2c3e6b, 0.85).setStrokeStyle(2, 0xf4e6c0).setInteractive();
-        this.add.text(x, y, ch, { fontSize: '22px', color: '#fff' }).setOrigin(0.5);
-        r.on('pointerdown', () => { if (!this.done) this.queued = d; });
-      });
-    makeButton(this, 350, 645, 180, 52, '↺ 重来', () => this.scene.restart({ room: this.roomIdx }), { fontSize: '20px', color: 0x6b4a2c });
-    makeButton(this, 350, 705, 180, 52, '💡 求助', () => this.showHint(), { fontSize: '20px', color: 0x3a6b45 });
-    makeButton(this, 350, 765, 180, 52, '🚪 离开', () => this.leave(), { fontSize: '20px' });
-  }
-
-  showHint() {
-    const need = this.lv.goals.map(g => `${CN[Math.min(g.a,g.b)]}${CN[Math.max(g.a,g.b)]} 要 ${g.a * g.b}`).join('，');
-    this.tip.setText(`${this.lv.hint}\n（${need}）`);
-  }
-
-  update() {
-    if (this.done || this.moving) return;
-    let d = this.queued; this.queued = null;
-    if (!d) {
-      if (this.cursors.up.isDown) d = 'up';
-      else if (this.cursors.down.isDown) d = 'down';
-      else if (this.cursors.left.isDown) d = 'left';
-      else if (this.cursors.right.isDown) d = 'right';
-    }
-    if (d) this.step(d);
-  }
-
-  step(dir) {
-    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
-    this.hero.setTexture({ up: 'hero_u', down: 'hero_d', left: 'hero_s', right: 'hero_s' }[dir])
-      .setFlipX(dir === 'left');
-    const nx = this.pos.x + dx, ny = this.pos.y + dy;
-    if (this.isWall(nx, ny)) return;
-
-    const box = this.boxes.find(b => b.x === nx && b.y === ny);
-    if (box) {
-      const bx = nx + dx, by = ny + dy;
-      if (this.isWall(bx, by)) return;
-      if (this.boxes.some(b => b.x === bx && b.y === by)) return;
-      box.x = bx; box.y = by;
-      this.tweens.add({ targets: [box.spr, box.txt], x: this.px(bx), y: this.py(by), duration: 130 });
-    }
-
-    this.moving = true;
-    this.pos = { x: nx, y: ny };
-    this.tweens.add({
-      targets: this.hero, x: this.px(nx), y: this.py(ny), duration: 130,
-      onComplete: () => { this.moving = false; if (box) this.checkWin(); },
-    });
-  }
-
-  isWall(x, y) {
-    return x < 0 || y < 0 || x >= this.gw || y >= this.gh || this.rows[y][x] === '#';
-  }
-
-  checkWin() {
-    const ok = this.lv.goals.every(g =>
-      this.boxes.some(b => b.x === g.x && b.y === g.y && b.val === g.a * g.b));
-    if (!ok) {
-      // 给点即时反馈：踩对格子但数字错了要说出来
-      const wrong = this.lv.goals.find(g => this.boxes.some(b => b.x === g.x && b.y === g.y && b.val !== g.a * g.b));
-      if (wrong) this.tip.setText(`凹槽写的是 ${CN[Math.min(wrong.a,wrong.b)]}${CN[Math.max(wrong.a,wrong.b)]}，\n得数不是这个箱子上的数哦。↺ 重来试试`);
-      return;
-    }
-    this.done = true;
-    this.cameras.main.flash(300, 255, 240, 180);
-    if (!GS.rooms.includes(this.roomIdx)) GS.rooms.push(this.roomIdx);
-
-    const lines = ['石门轰隆一声打开了！'];
-    const rw = this.lv.reward;
-    if (rw.kind === 'gold') { GS.p.gold += rw.val; lines.push(`房间深处有 💰${rw.val} 金币！`); }
-    else if (rw.kind === 'frag' && !GS.frags.includes(rw.idx)) {
-      GS.frags.push(rw.idx);
-      lines.push('地上有一页发黄的纸……', FRAGMENTS[rw.idx].text, `（本章记忆碎片 ${GS.frags.length}/8）`);
-    }
-    const allDone = SOKOBAN.every((_, i) => GS.rooms.includes(i));
-    if (allDone) { GS.flags.puzzle = true; lines.push('三间石室都解开了！\n沙漠深处的大石门应该开了。'); }
-    saveGame();
-
-    this.panel(lines, () => {
-      const next = SOKOBAN.findIndex((_, i) => !GS.rooms.includes(i));
-      if (next >= 0) this.scene.restart({ room: next });
-      else this.leave();
-    });
-  }
-
-  // 简易顺序消息面板（迷宫内部专用）
-  panel(lines, cb) {
-    const bg = this.add.rectangle(W / 2, H / 2, 456, 300, 0x14182e, 0.97).setStrokeStyle(4, 0xf4e6c0).setDepth(100);
-    const txt = this.add.text(W / 2, H / 2 - 30, '', { fontSize: '21px', fontFamily: FONT, color: '#fff',
-      align: 'center', wordWrap: { width: 410 }, lineSpacing: 8 }).setOrigin(0.5).setDepth(101);
-    const q = lines.slice();
-    const btn = makeButton(this, W / 2, H / 2 + 100, 200, 54, '继续', () => {
-      if (q.length) { txt.setText(q.shift()); return; }
-      bg.destroy(); txt.destroy(); btn.destroy();
-      cb();
-    }, { fontSize: '20px' });
-    btn.bg.setDepth(101); btn.txt.setDepth(102);
-    txt.setText(q.shift());
-  }
-
-  leave() {
-    GS.fromPuzzle = true;
-    saveGame();
-    this.scene.stop();
-    this.scene.wake('World');
-  }
-}
-
 // ============ 分糖机关（第2章）============
 // 把"平均分"从算式变成手上的动作：点盘子放糖，每盘必须一样多，
 // 分不完的留在中间 —— 那就是余数。
@@ -2420,7 +2150,7 @@ class Clear extends Phaser.Scene {
     // 日记不清空 —— 56 页要跨章累积，清了整条暗线就废了
     GS.chests = []; GS.locks = []; GS.rooms = [];
     GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pool = [];
-    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.fromHouse = null;
+    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.indoor = null; GS.outPos = null;
     loadChapter(GS.chapter);
     GS.p.hp = GS.p.maxhp; GS.p.mp = GS.p.maxmp;
     saveGame();
@@ -2437,6 +2167,6 @@ window.game = new Phaser.Game({
   pixelArt: true,
   backgroundColor: '#000',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, World, Battle, Puzzle, Candy, House, Clear],
+  scene: [Boot, Title, World, Battle, Puzzle, Candy, Clear],
 });
 window.GS = GS;

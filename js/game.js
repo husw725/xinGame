@@ -130,17 +130,66 @@ class DialogBox {
     scene.input.keyboard.on('keydown-SPACE', () => this.tap());
     scene.input.keyboard.on('keydown-ENTER', () => this.tap());
   }
+  // 文字框内高有限（框 445~615），长文案必须自动缩字号 + 自动分页，
+  // 否则会印到框外面。修在这里，所有调用点一次性受益。
+  availH() { return 605 - this.text.y; }
+
+  fits(str, size) {
+    const old = this.text.style.fontSize;
+    this.text.setFontSize(size).setText(str);
+    const h = this.text.height;
+    this.text.setText('').setStyle({ fontSize: old });
+    return h <= this.availH();
+  }
+
+  // 按换行把过长的一段拆成能装下的若干页。
+  // 以 18 号字为分页基准（而不是最小的 15），页与页之间字号才不会忽大忽小。
+  pushFitted(str) {
+    const BASE = 18;
+    const parts = [];
+    // 先处理"单独一行就装不下"的超长句：按字数硬切
+    for (const p of String(str).split('\n')) {
+      if (this.fits(p, BASE) || !p.length) { parts.push(p); continue; }
+      let cut = p;
+      while (cut.length && !this.fits(cut, BASE)) {
+        let n = cut.length;
+        while (n > 1 && !this.fits(cut.slice(0, n), BASE)) n = Math.floor(n * 0.8);
+        parts.push(cut.slice(0, n));
+        cut = cut.slice(n);
+      }
+      if (cut.length) parts.push(cut);
+    }
+    let buf = [];
+    const flush = () => { if (buf.length) { this.queue.push(buf.join('\n')); buf = []; } };
+    for (const p of parts) {
+      if (buf.length && !this.fits(buf.concat(p).join('\n'), BASE)) flush();
+      buf.push(p);
+    }
+    flush();
+  }
+
   say(lines, cb, speaker = '') {
-    this.queue = lines.slice();
     this.cb = cb || null;
     this.open = true;
     this.container.setVisible(true);
     this.nameText.setText(speaker);
+    // 没有说话人时文字上移，多出一行的空间
+    this.text.y = speaker ? 490 : 472;
+    this.queue = [];
+    lines.forEach(l => this.pushFitted(l));
+    // 同一段对话统一用一个字号（取所有页里最小的那个），避免翻页时字忽大忽小
+    this.pageSize = 22;
+    for (const page of this.queue) {
+      let s = 15;
+      for (const t of [22, 20, 18, 16, 15]) { s = t; if (this.fits(page, t)) break; }
+      this.pageSize = Math.min(this.pageSize, s);
+    }
     this.next();
   }
   next() {
     if (this.queue.length === 0) { this.close(); return; }
     this.full = this.queue.shift();
+    this.text.setFontSize(this.pageSize || 22);
     this.text.setText('');
     this.charIdx = 0;
     this.typing = true;
@@ -567,30 +616,27 @@ class World extends Phaser.Scene {
     const codeLock = CHEST_LOCKS.findIndex(l => l.kind === 'code');
     const solved = GS.locks.includes(codeLock);
 
-    const chest = groups.chest3 || [];
-    lines.push(`${solved ? '✅' : '🔒'} 沙漠尽头宝箱的口令` +
-      (solved ? '（已解开）' : `（还差 ${chest.filter(x => !GS.clues.includes(x.k)).length} 条）`));
-    chest.forEach(({ k, c }) => {
-      lines.push(GS.clues.includes(k)
-        ? `　· ${c.from}：${c.note}　✓`
-        : '　· ？？？　还没问到');
-    });
-
-    const lore = (groups.lore || []).filter(x => GS.clues.includes(x.k));
-    if (lore.length) {
-      lines.push('📌 其他消息');
-      lore.forEach(({ c }) => lines.push(`　· ${c.from}：${c.note}`));
-    }
-
     if (!GS.clues.length) {
       this.dialog.say(['线索本还是空的。',
         '去和村里的人聊聊吧——\n他们知道的比看上去多。'], () => this.handbook());
       return;
     }
-    // 一屏放不下就分段
-    const chunks = [];
-    for (let i = 0; i < lines.length; i += 5) chunks.push(lines.slice(i, i + 5).join('\n'));
-    this.dialog.say(chunks, () => this.handbook());
+
+    const chest = groups.chest3 || [];
+    const left = chest.filter(x => !GS.clues.includes(x.k)).length;
+    lines.push(`${solved ? '✅' : '🔒'} 沙漠尽头的宝箱口令` + (solved ? '（已开）' : `（差${left}条）`));
+    chest.forEach(({ k, c }) => {
+      // 一行一条，短到不会折行
+      lines.push(GS.clues.includes(k) ? `✓ ${c.from}：${c.note}` : '✗ ？？？还没问到');
+    });
+
+    const lore = (groups.lore || []).filter(x => GS.clues.includes(x.k));
+    if (lore.length) {
+      lines.push('📌 其他消息');
+      lore.forEach(({ c }) => lines.push(`· ${c.from}：${c.note}`));
+    }
+    // 分页交给对话框自己算（它知道自己装得下几行）
+    this.dialog.say([lines.join('\n')], () => this.handbook());
   }
 
   readDiary() {

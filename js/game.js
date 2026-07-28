@@ -566,11 +566,17 @@ class World extends Phaser.Scene {
   }
 
   update() {
-    // 看门狗：inBattle 是给战斗/室内/迷宫用的输入锁。
-    // 万一那些场景没走正常出口就结束了，这里兜底解锁，否则地图会永久卡死。
-    if (this.inBattle && !['Battle', 'House', 'Puzzle'].some(k => this.scene.isActive(k))) {
-      this.inBattle = false;
-    }
+    // 看门狗：inBattle 是给战斗/室内/迷宫用的输入锁，万一子场景没走正常出口就结束了要兜底解锁。
+    // 但必须留宽限期 —— 开战有 260ms 转场，这段时间子场景还没起来，
+    // 提前解锁会让玩家按住的方向继续生效，一步踏进下一只怪，战斗套战斗出不来。
+    if (this.inBattle) {
+      const running = ['Battle', 'House', 'Puzzle', 'Candy'].some(k => this.scene.isActive(k));
+      if (running) this.lockedAt = 0;
+      else {
+        if (!this.lockedAt) this.lockedAt = this.time.now;
+        else if (this.time.now - this.lockedAt > 2000) { this.inBattle = false; this.lockedAt = 0; }
+      }
+    } else this.lockedAt = 0;
     if (this.moving || this.inBattle || this.dialog.open) return;
     let d = this.queued;
     this.queued = null;
@@ -1353,6 +1359,7 @@ class World extends Phaser.Scene {
 
   enterHouse(key) {
     this.inBattle = true;          // 借用同一个锁，停掉地图输入
+    this.lockedAt = 0;
     this.held = null; this.queued = null;
     this.cameras.main.resetFX();
     this.scene.launch('House', { door: key });
@@ -1369,6 +1376,7 @@ class World extends Phaser.Scene {
       this.dialog.choice(`要进石室吗？（还剩 ${left} 间）`, ['进去！', '再等等'], i => {
         if (i !== 0) return;
         this.inBattle = true;   // 借用同一个锁，避免地图继续响应输入
+        this.lockedAt = 0;
         this.held = null; this.queued = null;
         const next = SOKOBAN.findIndex((_, k) => !GS.rooms.includes(k));
         this.cameras.main.resetFX();
@@ -1392,7 +1400,8 @@ class World extends Phaser.Scene {
 
   startBattle(def, extra) {
     this.inBattle = true;
-    this.held = null;
+    this.lockedAt = 0;
+    this.held = null; this.queued = null;
     this.cameras.main.flash(250, 255, 255, 255);
     this.time.delayedCall(260, () => {
       // 休眠会冻住正在播放的闪白特效，醒来后残留一层白纱 —— 睡前必须清掉
@@ -1437,10 +1446,16 @@ class World extends Phaser.Scene {
       if (r.mid !== undefined) {
         const mob = this.mobs[r.mid];
         mob.dead = true; mob.sprite.setVisible(false);
-        this.time.delayedCall(25000, () => {
+        // 45 秒后重生，且玩家离窝还有 6 格以上才放出来 ——
+        // 否则刚打完转身就顶脸复活，孩子会觉得永远打不完
+        const tryRespawn = () => {
+          if (!this.scene.isActive() || mob.sprite.active === false) return;
+          const far = Math.abs(this.px - mob.home.x) + Math.abs(this.py - mob.home.y) >= 6;
+          if (!far) { this.time.delayedCall(5000, tryRespawn); return; }
           mob.x = mob.home.x; mob.y = mob.home.y; mob.dead = false;
           mob.sprite.setPosition(mob.x * TILE + 16, mob.y * TILE + 16).setVisible(true);
-        });
+        };
+        this.time.delayedCall(45000, tryRespawn);
       }
       if (r.revenge && this.revengeSprite && GS.pool.length === 0) {
         this.revengeSprite.destroy(); this.revengeSprite = null;

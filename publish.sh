@@ -7,8 +7,10 @@ SRC=/Users/husw/demo/skills/xinGame        # 开发目录
 DEST="$(cd "$(dirname "$0")" && pwd)"      # 本仓库
 MSG="${1:-chore: 更新}"
 
-# 只同步游戏文件，避免把开发目录里的其他东西带上来
-cp "$SRC/index.html" "$SRC/DESIGN.md" "$SRC/balance_sim.js" "$SRC/puzzle_check.js" "$DEST/"
+# 只同步游戏文件和校验脚本，避免把开发目录里的其他东西带上来
+# 校验脚本必须全部同步：漏掉哪个，那个关卡就一直跑的是旧版本
+cp "$SRC/index.html" "$SRC/DESIGN.md" "$DEST/"
+cp "$SRC"/*_check.js "$SRC"/*_sim.js "$DEST/"
 cp "$SRC"/js/*.js "$DEST/js/"
 
 cd "$DEST"
@@ -38,6 +40,9 @@ node puzzle_check.js > /dev/null || { echo "✗ puzzle_check.js 未通过，已�
 echo "✓ 通过"
 echo "--- 头顶标记校验 ---"
 node mark_check.js > /dev/null || { echo "✗ mark_check.js 未通过：任务标记指错人"; exit 1; }
+echo "✓ 通过"
+echo "--- Boss触发/章节往返校验 ---"
+node chapter_check.js > /dev/null || { echo "✗ chapter_check.js 未通过：Boss打不着、死后挡路、或章节往返丢进度"; exit 1; }
 echo "✓ 通过"
 echo "--- 章节多样性校验 ---"
 node variety_check.js > /dev/null || { echo "✗ variety_check.js 未通过：新章节太像旧章节"; exit 1; }

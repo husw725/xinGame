@@ -42,6 +42,32 @@ let GS = defaultState();
 const SAVE_KEY = 'xinGame_save_v4';
 function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(GS)); } catch (e) {} }
 function loadGame() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+
+// 宝箱/机关/谜题房的编号都是章内局部的（第1章的3号箱和第2章的3号箱撞号），
+// 所以离开一章时要把它的进度整包收起来，回来再原样摊开。
+// 早先是进出章节直接清空：回上一章所有箱子又变成没开过的（能无限刷金币），
+// 再往前走第二章也从头开始（进度全丢）。
+function stashChapter() {
+  GS.chSave = GS.chSave || {};
+  GS.chSave[GS.chapter] = {
+    flags: GS.flags, chests: GS.chests, locks: GS.locks, rooms: GS.rooms,
+    clues: GS.clues, quest: GS.quest, searched: GS.searched, pos: GS.pos,
+  };
+}
+
+function unstashChapter(idx) {
+  const s = (GS.chSave || {})[idx];
+  if (s) {
+    GS.flags = s.flags; GS.chests = s.chests; GS.locks = s.locks; GS.rooms = s.rooms;
+    GS.clues = s.clues; GS.quest = s.quest; GS.searched = s.searched || {};
+    GS.pos = s.pos || null;
+    return;
+  }
+  // 没有记录（老存档往回走）：这章肯定已经通关，门都算开着，别让魔王复活
+  GS.flags = { intro: true, boss: true, puzzle: true };
+  GS.chests = []; GS.locks = []; GS.rooms = SOKOBAN.map((_, i) => i);
+  GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pos = null;
+}
 function expNeed(lv) { return 20 + lv * 20; }
 
 // ---- 装备派生属性 ----
@@ -467,7 +493,7 @@ class World extends Phaser.Scene {
       this.crystal = this.add.image(ct.x * TILE + 16, ct.y * TILE + 16, 'crystal').setScale(2).setDepth(5);
       this.tweens.add({ targets: this.crystal, alpha: 0.5, duration: 700, yoyo: true, repeat: -1 });
       this.bossSprite = this.add.image(this.bossTile.x * TILE + 16, this.bossTile.y * TILE + 10, ENEMIES[CHAPTER.boss].tex).setScale(2.5).setDepth(6);
-    }
+    } else if (!this.indoor) this.freeBossTiles();
 
     // --- 小怪 ---
     if (!this.indoor) SPAWNS.forEach((s, i) => {
@@ -672,7 +698,9 @@ class World extends Phaser.Scene {
       ]);
       return true;
     }
-    if (!GS.flags.boss && nx === this.bossTile.x && ny === this.bossTile.y) {
+    // 魔王和它守着的水晶挨在一起，画面上就是一坨，孩子分不清该面朝哪一格。
+    // 所以两格都算触发点 —— 四面八方走过来都能打，包括从背后。
+    if (!GS.flags.boss && this.isBossFront(nx, ny)) {
       const bn = ENEMIES[CHAPTER.boss].name;
       this.dialog.say([GS.chapter === 0
         ? '哞——想要水晶？\n先把乘法口诀背熟再来吧，小豆丁！'
@@ -684,6 +712,19 @@ class World extends Phaser.Scene {
       return true;
     }
     return false;
+  }
+
+  isBossFront(x, y) {
+    const ct = CHAPTER.crystalTile;
+    return (x === this.bossTile.x && y === this.bossTile.y) || (x === ct.x && y === ct.y);
+  }
+
+  // 魔王死了就别再当墙。'B'/'X' 在 BLOCK_CHARS 里，每次重建地图都会被重新加回来，
+  // 所以这里要在 create 和战斗胜利后各清一次，否则原地留一堵看不见的墙。
+  freeBossTiles() {
+    const ct = CHAPTER.crystalTile;
+    this.blocked.delete(this.bossTile.x + ',' + this.bossTile.y);
+    this.blocked.delete(ct.x + ',' + ct.y);
   }
 
   updateHUD() {
@@ -925,11 +966,11 @@ class World extends Phaser.Scene {
       `回到${c.name}？\n那边还有 ${left} 页日记没找到。\n（等级、装备、日记都会带着）`,
       ['回去看看', '不用了'], i => {
         if (i !== 0) return;
+        stashChapter();
         GS.chapter = idx;
-        GS.flags = { intro: true, boss: true, puzzle: true };   // 旧章节的门都已开
-        GS.chests = []; GS.locks = []; GS.rooms = [0, 1, 2];
-        GS.clues = []; GS.quest = {}; GS.pos = null;
-        loadChapter(idx);
+        loadChapter(idx);            // SOKOBAN 等章节数据要先切，unstash 才知道有几个谜题房
+        unstashChapter(idx);
+        GS.indoor = null; GS.pool = [];
         saveGame();
         this.scene.start('World');
       });
@@ -1110,12 +1151,17 @@ class World extends Phaser.Scene {
   }
 
   enterChapter(idx) {
+    stashChapter();
     GS.chapter = idx;
-    GS.flags = { intro: false, boss: false, puzzle: false };
-    GS.chests = []; GS.locks = []; GS.rooms = [];
-    GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pool = [];
-    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.indoor = null; GS.outPos = null;
     loadChapter(idx);
+    // 回上一章补碎片后再出发，第二章不该从头开始 —— 有记录就照原样恢复
+    if ((GS.chSave || {})[idx]) unstashChapter(idx);
+    else {
+      GS.flags = { intro: false, boss: false, puzzle: false };
+      GS.chests = []; GS.locks = []; GS.rooms = [];
+      GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pos = null;
+    }
+    GS.pool = []; GS.lastBattle = null; GS.fromPuzzle = false; GS.indoor = null; GS.outPos = null;
     GS.p.hp = GS.p.maxhp; GS.p.mp = GS.p.maxmp;
     saveGame();
     this.scene.start('World');
@@ -1680,6 +1726,7 @@ class World extends Phaser.Scene {
         if (!GS.tools.includes(CHAPTER.tool)) GS.tools.push(CHAPTER.tool);   // 本章探索工具
         saveGame();
         this.bossSprite.destroy();
+        this.freeBossTiles();
         this.dialog.say([
           '口诀骆驼王倒下了，眼里的红光消失了……',
           '骆驼王：谢谢你……我想起来了，\n我本来是守护口诀的精灵啊！',
@@ -2581,13 +2628,17 @@ class Clear extends Phaser.Scene {
 
   // 进入下一章：本章进度归零，人物等级/装备/日记全部带走
   nextChapter() {
+    stashChapter();
     GS.chapter += 1;
-    GS.flags = { intro: true, boss: false, puzzle: false };
-    // 日记不清空 —— 56 页要跨章累积，清了整条暗线就废了
-    GS.chests = []; GS.locks = []; GS.rooms = [];
-    GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pool = [];
-    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.indoor = null; GS.outPos = null;
     loadChapter(GS.chapter);
+    // 日记不清空 —— 56 页要跨章累积，清了整条暗线就废了
+    if ((GS.chSave || {})[GS.chapter]) unstashChapter(GS.chapter);
+    else {
+      GS.flags = { intro: true, boss: false, puzzle: false };
+      GS.chests = []; GS.locks = []; GS.rooms = [];
+      GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pos = null;
+    }
+    GS.pool = []; GS.lastBattle = null; GS.fromPuzzle = false; GS.indoor = null; GS.outPos = null;
     GS.p.hp = GS.p.maxhp; GS.p.mp = GS.p.maxmp;
     saveGame();
     this.scene.stop('World');

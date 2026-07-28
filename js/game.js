@@ -335,8 +335,9 @@ class DialogBox {
     const startY = 412 - (options.length - 1) * gap;
     options.forEach((opt, i) => {
       // 选项可以是纯字符串，也可以是 {label, tint} —— tint 用来标示装备属性涨还是减
-      const label = typeof opt === 'string' ? opt : opt.label;
-      const tint = typeof opt === 'string' ? null : opt.tint;
+      // 兜底：坏数据宁可显示成"？"也不能抛异常 —— 抛了就只剩提示框没有选项，出不来
+      const label = typeof opt === 'string' ? opt : (opt && opt.label) || '？';
+      const tint = typeof opt === 'string' ? null : opt && opt.tint;
       const btn = makeButton(this.scene, W / 2, startY + i * gap, 448, 58, label, () => {
         this.clearChoices();
         this.close();
@@ -1214,12 +1215,16 @@ class World extends Phaser.Scene {
   }
 
   // 分页选择菜单：每页 4 项，「返回」永远存在 —— 少了它就是死路（曾经买装备就出不来）
+  // items 可以是纯字符串，也可以是 {label, tint}。早先只认后者，传字符串进来
+  // 会算出 undefined 标签，choice() 当场抛异常 —— 提示框留在屏上、零个选项、
+  // dialog.open 卡在 true，之后每帧都早退，就是彻底卡死。
   pagedChoice(title, items, onPick, onBack, page = 0) {
     const PER = 4;
     const pages = Math.max(1, Math.ceil(items.length / PER));
     if (page >= pages) page = 0;
     const slice = items.slice(page * PER, page * PER + PER);
-    const labels = slice.map(it => (it.tint ? { label: it.label, tint: it.tint } : it.label));
+    const labels = slice.map(it => (typeof it === 'string' ? it
+                                  : it.tint ? { label: it.label, tint: it.tint } : it.label));
     const acts = slice.map((_, i) => () => onPick(page * PER + i));
     if (pages > 1) {
       labels.push(`▼ 下一页 (${page + 1}/${pages})`);

@@ -10,7 +10,7 @@ MSG="${1:-chore: 更新}"
 # 只同步游戏文件和校验脚本，避免把开发目录里的其他东西带上来
 # 校验脚本必须全部同步：漏掉哪个，那个关卡就一直跑的是旧版本
 cp "$SRC/index.html" "$SRC/DESIGN.md" "$DEST/"
-cp "$SRC"/*_check.js "$SRC"/*_sim.js "$DEST/"
+cp "$SRC"/*_check.js "$SRC"/*_sim.js "$SRC/stub.js" "$DEST/"
 cp "$SRC"/js/*.js "$DEST/js/"
 
 cd "$DEST"
@@ -43,6 +43,9 @@ node mark_check.js > /dev/null || { echo "✗ mark_check.js 未通过：任务�
 echo "✓ 通过"
 echo "--- Boss触发/章节往返校验 ---"
 node chapter_check.js > /dev/null || { echo "✗ chapter_check.js 未通过：Boss打不着、死后挡路、或章节往返丢进度"; exit 1; }
+echo "✓ 通过"
+echo "--- 传送阵交互校验 ---"
+node portal_check.js > /dev/null || { echo "✗ portal_check.js 未通过：传送阵会卡死或丢进度"; exit 1; }
 echo "✓ 通过"
 echo "--- 章节多样性校验 ---"
 node variety_check.js > /dev/null || { echo "✗ variety_check.js 未通过：新章节太像旧章节"; exit 1; }

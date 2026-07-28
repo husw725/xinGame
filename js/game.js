@@ -332,8 +332,22 @@ class World extends Phaser.Scene {
   create() {
     loadChapter(GS.chapter || 0);
     // 室内就是另一张地图，在同一个场景里切换 —— 这样对话/商店/战斗全都自然可用
+    // scene.restart() 不重置实例属性，凡是持有已销毁对象的字段都必须在这里清掉，
+    // 否则重启后定时刷新会去操作死对象，直接把游戏卡死
+    this.marks = [];
+    this.furn = {};
+    this.lockedAt = 0;
+    this.book = null;
+    this.crystal = null;
+    this.bossSprite = null;
+    this.revengeSprite = null;
+    this.ownerTile = null;
+    this.exitTile = null;
+    GS.searched = GS.searched || {};
+
     this.indoor = GS.indoor || null;
-    const house = this.indoor ? HOUSES[this.indoor] : null;
+    let house = this.indoor ? HOUSES[this.indoor] : null;
+    if (this.indoor && !house) { this.indoor = null; GS.indoor = null; saveGame(); }   // 门牌对不上就回到外面，别硬着头皮渲染
     this.rows = house ? house.rows : MAP;
     this.gw = this.rows[0].length;
     this.gh = this.rows.length;
@@ -454,7 +468,7 @@ class World extends Phaser.Scene {
 
     // --- 怨念怪 ---
     this.revengeSprite = null;
-    this.checkRevenge();
+    if (!this.indoor) this.checkRevenge();
 
     // --- 玩家（位置持久化，从迷宫/战斗回来不会被传送回村） ---
     let st = GS.pos || PLAYER_START;
@@ -510,7 +524,7 @@ class World extends Phaser.Scene {
     this.events.on('wake', () => this.onWake());
 
     // --- 开场剧情 ---
-    if (!GS.flags.intro) {
+    if (!GS.flags.intro && !this.indoor) {
       this.time.delayedCall(400, () => {
         if (GS.chapter === 1) {
           this.dialog.say([
@@ -785,6 +799,7 @@ class World extends Phaser.Scene {
   // 每半秒刷一遍：比在每处状态变更里手动挂钩可靠得多
   refreshMarks() {
     (this.marks || []).forEach(m => {
+      if (!m.txt || !m.txt.scene) return;      // 对象已销毁（换图后残留），跳过
       const t = this.npcMark(m.id);
       m.txt.setText(t || '').setColor(t === '!' ? '#ffe14d' : '#a8b0c8');
       m.txt.setVisible(!!t);
@@ -797,7 +812,7 @@ class World extends Phaser.Scene {
       stroke: '#1a1a22', strokeThickness: 5,
     }).setOrigin(0.5).setDepth(20);
     this.tweens.add({ targets: txt, y: txt.y - 6, duration: 600, yoyo: true, repeat: -1 });
-    (this.marks = this.marks || []).push({ id, txt });
+    this.marks.push({ id, txt });
   }
 
   // 记下线索：屏幕闪一下，孩子才知道"这句话被存起来了"

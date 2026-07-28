@@ -6,12 +6,44 @@
 <title>知识大冒险：遗忘魔王</title>
 <style>
   html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; touch-action: none; }
+  #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+          color: #8090b8; font: 16px/1.6 "PingFang SC","Microsoft YaHei",sans-serif; text-align: center; }
 </style>
 </head>
 <body>
-<script src="js/phaser.min.js"></script>
-<script src="js/data.js?v=20260728174638"></script>
-<script src="js/art.js?v=20260728174638"></script>
-<script src="js/game.js?v=20260728174638"></script>
+<div id="boot">正在载入……</div>
+<script>
+// GitHub Pages 给 index.html 发 max-age=600，所以这个文件本身会被缓存 10 分钟。
+// 如果版本戳写在这里，玩家就得手动改 URL 才拿得到新版本。
+// 所以改成：HTML 固定不变，版本号单独放 version.json，每次带时间戳去取 —— 永远是新的。
+// 离线时回落到上次记住的版本号（正好是浏览器缓存里那一份），所以断网仍能玩。
+(async () => {
+  const boot = document.getElementById('boot');
+  let v = localStorage.getItem('xinGame_ver') || '';
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    const j = await r.json();
+    if (j && j.v) { v = String(j.v); localStorage.setItem('xinGame_ver', v); }
+  } catch (e) { /* 离线：用上次的版本号，命中浏览器缓存 */ }
+
+  window.GAME_VER = v || '本地';
+  const files = ['js/phaser.min.js', 'js/data.js', 'js/art.js', 'js/game.js'];
+  try {
+    for (const f of files) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = f.includes('phaser') ? f : f + (v ? '?v=' + v : '');
+        s.onload = res;
+        s.onerror = () => rej(new Error(f));
+        document.body.appendChild(s);
+      });
+    }
+    boot.remove();
+  } catch (err) {
+    boot.textContent = '载入失败：' + err.message + '\n请检查网络后刷新';
+    boot.style.whiteSpace = 'pre-line';
+  }
+})();
+</script>
 </body>
 </html>

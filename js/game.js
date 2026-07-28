@@ -85,6 +85,14 @@ function learned() { return spellsAt(GS.p.lv); }
 function chapterFrags() { return fragsOfChapter(GS.chapter, GS.frags).length; }
 
 // ============ 通用 UI ============
+// 右下角版本号：你一眼就能核对打开的是不是最新版
+function verTag(scene) {
+  const v = window.GAME_VER || '本地';
+  return scene.add.text(W - 6, H - 4, 'v' + v, {
+    fontSize: '13px', fontFamily: FONT, color: '#5a6280',
+  }).setOrigin(1, 1).setScrollFactor(0).setDepth(500);
+}
+
 function makeButton(scene, x, y, w, h, label, cb, opts = {}) {
   const bg = scene.add.rectangle(x, y, w, h, opts.color ?? 0x2c3e6b)
     .setStrokeStyle(3, 0xf4e6c0).setInteractive({ useHandCursor: true });
@@ -140,6 +148,7 @@ class Title extends Phaser.Scene {
       }, { color: 0x3a6b45 });
     }
     this.add.text(W / 2, 800, '适合二升三小朋友 · 数学+语文', { fontSize: '16px', fontFamily: FONT, color: '#667' }).setOrigin(0.5);
+    verTag(this);
   }
 }
 
@@ -516,6 +525,8 @@ class World extends Phaser.Scene {
 
     // --- 对话框 ---
     this.dialog = new DialogBox(this);
+
+    verTag(this);
 
     // --- 头顶标记：定时刷新 ---
     this.refreshMarks();
@@ -1772,6 +1783,7 @@ class Battle extends Phaser.Scene {
       this.tapMsg();
     });
 
+    verTag(this);
     this.showMsgs([`${this.def.name} 出现了！`], () => this.showMenu());
   }
 

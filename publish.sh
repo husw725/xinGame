@@ -13,17 +13,12 @@ cp "$SRC"/js/*.js "$DEST/js/"
 
 cd "$DEST"
 
-# 打版本戳：浏览器会缓存 js，不加这个的话玩家可能一直跑旧版本
-STAMP=$(date +%Y%m%d%H%M%S)
-python3 - "$STAMP" <<'PYEOF'
-import re, sys, pathlib
-stamp = sys.argv[1]
-p = pathlib.Path('index.html')
-s = p.read_text()
-s = re.sub(r'(src="js/(?:data|art|game)\.js)(\?v=[^"]*)?"', r'\1?v=' + stamp + '"', s)
-p.write_text(s)
-PYEOF
-echo "版本戳 $STAMP"
+# 版本号写进 version.json，index.html 固定不变。
+# GitHub Pages 给 index.html 发 max-age=600，版本戳写在里面会跟着一起变旧，
+# 玩家就得手动改 URL 才拿得到新版。放进单独的 json 并带时间戳去取，永远是新的。
+STAMP=$(date +%Y%m%d-%H%M)
+printf '{"v":"%s"}\n' "$STAMP" > version.json
+echo "版本号 $STAMP"
 
 # 发布前必须过校验
 echo "--- 启动自检（能不能跑起来）---"
@@ -62,5 +57,6 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 git push -q origin main
 
 echo
-echo "✅ 已发布。约 1 分钟后生效："
+echo "✅ 已发布，版本号 $STAMP（约 1 分钟后生效）"
 echo "   https://husw725.github.io/xinGame/"
+echo "   打开后看右下角，应该显示 v$STAMP"

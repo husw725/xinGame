@@ -55,6 +55,13 @@ function stashChapter() {
   };
 }
 
+// 聊过的标记 key。info 类 NPC 打完魔王会换台词，所以那时算另一段话，
+// key 上带 ':b' —— 头顶的 ! 会重新亮起来，孩子才知道有新内容。
+function talkKey(id, npc) {
+  const phase = npc && npc.role === 'info' && GS.flags.boss && npc.lines2 ? ':b' : '';
+  return GS.chapter + ':' + id + phase;
+}
+
 function unstashChapter(idx) {
   const s = (GS.chSave || {})[idx];
   if (s) {
@@ -571,24 +578,22 @@ class World extends Phaser.Scene {
     this.events.on('wake', () => this.onWake());
 
     // --- 开场剧情 ---
+    // 开场只交代"我怎么来的"，其余全部拆给了村里的 NPC（role:'info'）：
+    // 一口气念五页说明，孩子记不住，也不想读。让他自己走过去问，才会记得。
     if (!GS.flags.intro && !this.indoor) {
       this.time.delayedCall(400, () => {
         if (GS.chapter === 1) {
           this.dialog.say([
             '（回廊的镇子很安静。）',
             '桌子只剩一半，锅被劈成了三份，\n门板整整齐齐码在墙边。',
-            '一个女孩坐在台阶上，\n面前摆着两堆一样多的石子。',
-            '「巨人说，什么都要分匀。」\n「分不匀的，他就拿走。」',
-            '回廊绕一圈就是一整天。\n中间的天井里，水晶在发光。',
+            '这里的人好像都在数东西。\n找人问问吧。',
           ], () => { GS.flags.intro = true; saveGame(); this.banner('第二章 · 除法回廊'); });
           return;
         }
         this.dialog.say([
           '暑假第一天，你翻开课本——咦？\n字和数字正在一个个消失！',
           '一道白光闪过……\n你被吸进了课本里的【知识王国】。',
-          '村长：勇者啊！遗忘魔王偷走了记忆水晶，\n知识精灵都变成了怪物！',
-          '村长：去南边的沙漠打败【口诀骆驼王】，\n夺回第一颗水晶吧！',
-          '提示：碰到怪物就会战斗。\n答对题目=攻击，连对3题触发暴击！',
+          '村子就在眼前。\n先去找人问问出了什么事。',
         ], () => { GS.flags.intro = true; saveGame(); this.banner('第一章 · 乘法口诀沙漠'); });
       });
     }
@@ -876,6 +881,8 @@ class World extends Phaser.Scene {
         }
         return talked ? null : '!';
       }
+      // info：开场说明的承接者。打完魔王换台词，所以那时要重新挂一次 !
+      case 'info': return GS.talked.includes(talkKey(id, npc)) ? null : '!';
       case 'elder':
         if (GS.flags.boss && GS.chapter + 1 < CHAPTERS.length) return '!';   // 可以出发去下一章
         return talked ? null : '!';
@@ -917,13 +924,19 @@ class World extends Phaser.Scene {
 
   talkNpc(id) {
     GS.talked = GS.talked || [];
-    const tk = GS.chapter + ':' + id;
-    if (!GS.talked.includes(tk)) { GS.talked.push(tk); saveGame(); }
     const npc = NPCS[id];
+    const tk = talkKey(id, npc);
+    if (!GS.talked.includes(tk)) { GS.talked.push(tk); saveGame(); }
     if (npc && npc.role === 'clue')   { this.npcClue(id, npc); return; }
     if (npc && npc.role === 'quest')  { this.npcQuest(id, npc); return; }
     if (npc && npc.role === 'lore')   { this.npcLore(npc); return; }
     if (npc && npc.role === 'chat')   { this.npcChat(npc); return; }
+    // info：台词直接写在 data.js 里。开场那一大段说明就是拆给这类 NPC 的，
+    // 每加一位不用再写一段代码。lines2 是打完本章魔王后的台词。
+    if (npc && npc.role === 'info') {
+      this.dialog.say((GS.flags.boss && npc.lines2) || npc.lines, null, npc.name);
+      return;
+    }
     if (id === '1') { // 村长
       if (GS.flags.boss && GS.chapter + 1 < CHAPTERS.length) { this.elderTravel(); return; }
       const lines = GS.flags.boss
@@ -931,9 +944,14 @@ class World extends Phaser.Scene {
            GS.frags.length < 8
              ? `不过你手上那些发黄的纸……\n本章还差 ${8 - chapterFrags()} 页呢。\n用${CHAPTER.toolName}再找找看。`
              : '这一章的八页你都拼齐了。\n可日记明显还没写完——\n后面的页数，大概散在别的地方。']
-        : [GS.chapter === 0 ? '南边沙漠里的口诀骆驼王守着记忆水晶。' : '回廊尽头的分糖巨人守着第二颗水晶。',
+        // 世界观交代原来在开场旁白里，现在挪到这儿 —— 孩子自己走过来问才记得住
+        : [GS.chapter === 0
+             ? '勇者啊，你终于来了！\n遗忘魔王偷走了【记忆水晶】，\n知识精灵全都变成了怪物。'
+             : '你是外面来的？\n这儿的第二颗水晶也被抢了。',
+           GS.chapter === 0 ? '去南边沙漠打败【口诀骆驼王】，\n把第一颗水晶夺回来！' : '回廊尽头的分糖巨人守着第二颗水晶。',
            '路上有一扇大石门，推不开的。\n旁边石室里有会动的石箱，\n那是开门的机关。',
-           '沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。',
+           GS.chapter === 0 ? '沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。'
+                            : '四个角上的侧厅别漏了，\n里头有人藏过东西。',
            '答错的题会变成【怨念怪】出现在村口，\n打败它才算真正学会哦！'];
       this.dialog.say(lines, () => {
         this.dialog.choice('要在村长家休息一下吗？（免费恢复）', ['休息（恢复HP/MP）', '不用了'], i => {
@@ -984,21 +1002,26 @@ class World extends Phaser.Scene {
   travelHub() {
     const dests = this.travelDests();
     if (!dests.length) {
+      // 说清楚"现在不能用"和"怎么才能用"，别只描写它长什么样
       this.dialog.say([
-        '地上刻着一个圆阵，纹路是暗的，摸上去冰冰的。',
-        '旁边刻着一行小字：\n「打败这一章的魔王，我就会亮起来。」',
-      ]);
+        '地上有一个大圆盘，刻着看不懂的花纹。',
+        '圆盘是暗的，踩上去凉凉的，没有反应。',
+        '边上刻着一行字：\n「打败这一章的魔王，我就会亮。」',
+      ], null, '传送圆盘');
       return;
     }
+    // 每一条都写清"去过没有"和"那边还差几页日记"，孩子才知道该回哪
     const labels = dests.map(d => {
-      const got = fragsOfChapter(d.i, GS.frags).length;
-      return `${d.seen ? '🔵' : '✨'} ${d.c.name}　日记 ${got}/8`;
+      const left = 8 - fragsOfChapter(d.i, GS.frags).length;
+      if (!d.seen) return `✨ ${d.c.name}（新地方）`;
+      return `🔵 ${d.c.name}` + (left > 0 ? `　日记还差${left}页` : '　日记已齐');
     });
-    this.pagedChoice('传送阵亮着微光，中间浮着几个名字。\n要去哪儿？', labels, k => {
-      const d = dests[k];
-      if (d.seen) this.warpTo(d.i);
-      else this.travelTo(d.i);   // 第一次去：走过场动画，别把剧情跳掉
-    }, () => {});
+    this.pagedChoice('圆盘亮了，上面浮出几个地名。\n去哪儿？（等级和装备都跟着走）',
+      labels, k => {
+        const d = dests[k];
+        if (d.seen) this.warpTo(d.i);
+        else this.travelTo(d.i);   // 第一次去：走过场动画，别把剧情跳掉
+      }, () => {});
   }
 
   // 去过的章节：不放过场动画，直接落地

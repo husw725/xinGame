@@ -295,6 +295,12 @@ const NPC_PALETTES = {
   npc_grandpa:  { h:'#e8e8e8', s:'#e8bf95', k:'#232323', b:'#5a6b8a' },
   npc_boy:      { h:'#241c14', s:'#f2c9a0', k:'#232323', b:'#d8b23a' },
   npc_traveler: { h:'#2a2a2a', s:'#d9a878', k:'#232323', b:'#8a7548' },
+  // 开场那一大段说明拆给这几位了，所以他们得看着不一样
+  npc_guard:    { h:'#33302b', s:'#e8bf95', k:'#232323', b:'#4a6ea8' },
+  npc_kid:      { h:'#3a2412', s:'#f9dcbb', k:'#232323', b:'#7fc4d8' },
+  npc_granny:   { h:'#dedede', s:'#efc6a2', k:'#232323', b:'#9a6ba8' },
+  npc_girl2:    { h:'#1f1a14', s:'#f7d6b0', k:'#232323', b:'#c8563a' },
+  npc_carpenter:{ h:'#4a3520', s:'#dda878', k:'#232323', b:'#6f8a4a' },
 };
 
 function hexInt(hex) { return parseInt(hex.slice(1), 16); }

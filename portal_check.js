@@ -44,7 +44,8 @@ console.log('=== 传送阵：撞上去要真的弹出可点的选项 ===\n');
   ctx.__flush(500);
   const d = w.dialog;
   ok(d.open === true, '对话框打开了');
-  ok(/要去哪儿/.test(d.text.text), '提示文案正确', d.text.text);
+  ok(/去哪儿/.test(d.text.text) && /等级和装备/.test(d.text.text),
+     '提示文案说清了去哪儿、以及等级装备会带走', d.text.text);
   // 这是关键的一条：浏览器里看到的是 0
   ok(d.choiceButtons.length > 0, `选项按钮建出来了（${d.choiceButtons.length} 个，0 就是软卡死）`);
   const labels = d.choiceButtons.map(b => b.txt.text);
@@ -71,7 +72,9 @@ console.log('\n=== 没打魔王：传送阵是暗的，且不能把人卡住 ===
   const d = w.dialog;
   ok(d.open === true, '给了提示');
   // say() 是逐字打出来的，text.text 只有已打出的部分；full 才是整句
-  ok(/暗的|亮起来/.test(d.full || d.text.text), '提示说明要先打魔王', d.full || d.text.text);
+  // say() 分多页，逐页找那句说明
+  const all = (d.queue || []).concat([d.full || d.text.text]).join(' ');
+  ok(/打败这一章的魔王/.test(all), '提示说明要先打魔王才会亮', all);
   ok(d.choiceButtons.length === 0, '这是纯消息，没有选项');
   // 纯消息必须能一路点完关掉，否则就是卡死
   for (let i = 0; i < 8 && d.open; i++) { d.lastTap = 0; d.tap(); ctx.__flush(300); }

@@ -2,7 +2,7 @@
 const TILE = 32;
 
 // 图例: T树 .草 -路 r屋顶 w墙 d门 f栅栏 k岩石 ,沙 C仙人掌
-//       c宝箱 p记忆碎片 h隐藏点(需放大镜) D迷宫入口 G石门 X水晶 B魔王 1村长 2商人 3老师
+//       c宝箱 p记忆碎片 h隐藏点(需放大镜) D迷宫入口 G石门 X水晶 B魔王 O传送阵 1村长 2商人 3老师
 // 结构：村庄(0-14) → 沙漠主廊 x10-14，左右支路藏宝(15-46) → 迷宫+石门(47-51) → 魔王(52-57)
 const CH1_MAP = [
   "TTTTTTTTTTTTTTTTTTTTTTTTT", // 0
@@ -17,7 +17,7 @@ const CH1_MAP = [
   "T..wdw......-...........T",
   "T...........-...........T", // 10 （老师已移入学堂）
   "T...........-.......6...T", // 11 朵朵
-  "T....T......-......T....T",
+  "T....T...O..-......T....T", // 12 x10=传送阵（出生点旁边，一眼看得到）
   "T......7....-....8......T", // 13 老爷爷 / 石头
   "TTTTTfffffff-fffffffTTTTT", // 14 村口
   "k,,,,,,,,,,,,,,,,,,,,,,,k", // 15 沙漠入口
@@ -538,6 +538,7 @@ function _ch2map() {
   fill(2, 7, 4, 9, 'r'); fill(2, 8, 4, 9, 'w'); put(3, 9, 'd');       // 学堂
   [[8, 5], [16, 5], [10, 10], [16, 10]].forEach(([x, y]) => put(x, y, 'P'));
   put(4, 6, '4'); put(18, 6, '5'); put(4, 10, '6'); put(20, 10, '7'); put(4, 12, '8');
+  put(10, 12, 'O');   // 传送阵（出生点 12,11 旁边）
 
   // --- 进廊通道 ---
   fill(11, 13, 13, 16, 's');
@@ -744,9 +745,29 @@ function fragsOfChapter(chapterIdx, list) {
 loadChapter(0);
 
 if (typeof module !== 'undefined') {
-  module.exports = { MAP, MAPW, MAPH, ENEMIES, SPAWNS, GEAR, SLOTS, SHOP_GEAR, SPELLS, spellsAt,
-                     FRAGMENTS, CHESTS, SOKOBAN, PLAYER_START, REVENGE_TILE,
-                     NPCS, CLUES, CHEST_LOCKS, TOTAL_FRAGS, HOUSES, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
+  module.exports = { ENEMIES, GEAR, SLOTS, SPELLS, spellsAt,
+                     TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
                      CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, fragGlobal, fragText, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
+  // 下面这些会被 loadChapter 整个换掉，所以必须导出成 getter。
+  // 直接写进对象字面量的话导出的是加载那一刻的值 —— node 校验脚本里
+  // loadChapter(1) 之后读到的还是第一章的地图，第二章等于没验。
+  // （game.js 在浏览器里是当普通脚本读这些变量的，一直是对的，只有 node 侧受影响。）
+  Object.defineProperties(module.exports, {
+    MAP:          { get: () => MAP,          enumerable: true },
+    MAPW:         { get: () => MAPW,         enumerable: true },
+    MAPH:         { get: () => MAPH,         enumerable: true },
+    SPAWNS:       { get: () => SPAWNS,       enumerable: true },
+    PLAYER_START: { get: () => PLAYER_START, enumerable: true },
+    REVENGE_TILE: { get: () => REVENGE_TILE, enumerable: true },
+    FRAGMENTS:    { get: () => FRAGMENTS,    enumerable: true },
+    NPCS:         { get: () => NPCS,         enumerable: true },
+    CLUES:        { get: () => CLUES,        enumerable: true },
+    CHEST_LOCKS:  { get: () => CHEST_LOCKS,  enumerable: true },
+    CHESTS:       { get: () => CHESTS,       enumerable: true },
+    HOUSES:       { get: () => HOUSES,       enumerable: true },
+    SHOP_GEAR:    { get: () => SHOP_GEAR,    enumerable: true },
+    SOKOBAN:      { get: () => SOKOBAN,      enumerable: true },
+    CHAPTER:      { get: () => CHAPTER,      enumerable: true },
+  });
 }

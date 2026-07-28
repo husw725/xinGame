@@ -377,6 +377,7 @@ class World extends Phaser.Scene {
     this.crystal = null;
     this.bossSprite = null;
     this.revengeSprite = null;
+    this.portal = null;
     this.ownerTile = null;
     this.exitTile = null;
     GS.searched = GS.searched || {};
@@ -460,6 +461,13 @@ class World extends Phaser.Scene {
           }
         } else if (ch === 'D') {
           this.add.image(x * TILE + 16, y * TILE + 16, 't_dungeon').setScale(2).setDepth(4);
+        } else if (ch === 'O') {
+          // 传送阵：能去的地方就转起来，没地方去就是块暗石头
+          const live = this.travelDests().length > 0;
+          const spr = this.add.image(x * TILE + 16, y * TILE + 16, 'portal').setScale(2).setDepth(3);
+          this.portal = { x, y, spr };
+          if (live) this.tweens.add({ targets: spr, alpha: 0.45, angle: 360, duration: 2600, repeat: -1 });
+          else spr.setAlpha(0.3).setTint(0x5a6070);
         } else if (ch === 'G') {
           if (GS.flags.puzzle) {
             this.blocked.delete(key);   // 解开迷宫 → 石门打开
@@ -690,6 +698,7 @@ class World extends Phaser.Scene {
       else this.dialog.say(['门锁着……里面好像没有人。']);
       return true;
     }
+    if (this.portal && this.portal.x === nx && this.portal.y === ny) { this.travelHub(); return true; }
     if (ch === 'D') { this.enterDungeon(); return true; }
     if (ch === 'G' && !GS.flags.puzzle) {
       this.dialog.say([
@@ -792,6 +801,8 @@ class World extends Phaser.Scene {
       if (!GS.tools.includes(CHAPTER.hiddenTool)) { this.dialog.say([GS.chapter === 0 ? '这里的沙子好像有点不一样……\n可是什么也看不出来。' : '墙缝里好像卡着什么……\n可是手伸不进去。']); return; }
       this.pickFrag(key, this.hidden[key], true); return;
     }
+    // 传送阵：走上去就开（跟"进门直接进"一致）。不真的踩上去，免得走开时又触发一次
+    if (this.portal && this.portal.x === nx && this.portal.y === ny) { this.travelHub(); return; }
     // 门：走进去就进屋，不用按 A
     if (this.doors.has(key)) {
       if (HOUSES[key]) this.enterHouse(key);
@@ -949,31 +960,56 @@ class World extends Phaser.Scene {
     const p = GS.p;
     this.dialog.choice(
       `勇者 Lv${p.lv}　💰${p.gold}\nHP ${p.hp}/${p.maxhp}　MP ${p.mp}/${p.maxmp}\n⚔️${totalAtk()} 🛡️${totalDef()} 👟${totalSpd()} 🧠${totalInt()}`,
-      ['🎽 装备栏', '✨ 魔法（野外）', `📖 冒险手册（本章 ${chapterFrags()}/8）`,
-       ...(GS.chapter > 0 ? ['🚪 回到上一章'] : []), '关闭'], i => {
+      // 章节往返改走地图上的传送阵了，菜单里不再留第二个入口 —— 两套路径都得维护正确性
+      ['🎽 装备栏', '✨ 魔法（野外）', `📖 冒险手册（本章 ${chapterFrags()}/8）`, '关闭'], i => {
         if (i === 0) this.equipMenu(() => this.openMenu());
         else if (i === 1) this.fieldSpells();
         else if (i === 2) this.handbook();
-        else if (i === 3 && GS.chapter > 0) this.gotoChapter(GS.chapter - 1);
       });
   }
 
-  // 章节跳转：可以回上一章补没拿到的碎片（放大镜/钩爪是打完 Boss 才有的）
-  gotoChapter(idx) {
-    const c = CHAPTERS[idx];
-    const left = 8 - fragsOfChapter(idx, GS.frags).length;
-    this.dialog.choice(
-      `回到${c.name}？\n那边还有 ${left} 页日记没找到。\n（等级、装备、日记都会带着）`,
-      ['回去看看', '不用了'], i => {
-        if (i !== 0) return;
-        stashChapter();
-        GS.chapter = idx;
-        loadChapter(idx);            // SOKOBAN 等章节数据要先切，unstash 才知道有几个谜题房
-        unstashChapter(idx);
-        GS.indoor = null; GS.pool = [];
-        saveGame();
-        this.scene.start('World');
-      });
+  // 传送阵能去哪儿：去过的章节随时回（补碎片要用后面章节拿到的工具），
+  // 没去过的只开放"下一章"，而且要先打完本章魔王
+  travelDests() {
+    const out = [];
+    CHAPTERS.forEach((c, i) => {
+      if (i === GS.chapter) return;
+      if (i < GS.chapter || (GS.chSave || {})[i]) out.push({ i, c, seen: true });
+      else if (i === GS.chapter + 1 && GS.flags.boss) out.push({ i, c, seen: false });
+    });
+    return out;
+  }
+
+  travelHub() {
+    const dests = this.travelDests();
+    if (!dests.length) {
+      this.dialog.say([
+        '地上刻着一个圆阵，纹路是暗的，摸上去冰冰的。',
+        '旁边刻着一行小字：\n「打败这一章的魔王，我就会亮起来。」',
+      ]);
+      return;
+    }
+    const labels = dests.map(d => {
+      const got = fragsOfChapter(d.i, GS.frags).length;
+      return `${d.seen ? '🔵' : '✨'} ${d.c.name}　日记 ${got}/8`;
+    });
+    this.pagedChoice('传送阵亮着微光，中间浮着几个名字。\n要去哪儿？', labels, k => {
+      const d = dests[k];
+      if (d.seen) this.warpTo(d.i);
+      else this.travelTo(d.i);   // 第一次去：走过场动画，别把剧情跳掉
+    }, () => {});
+  }
+
+  // 去过的章节：不放过场动画，直接落地
+  warpTo(idx) {
+    stashChapter();
+    GS.chapter = idx;
+    loadChapter(idx);
+    unstashChapter(idx);
+    GS.indoor = null; GS.pool = []; GS.lastBattle = null; GS.fromPuzzle = false; GS.outPos = null;
+    saveGame();
+    this.cameras.main.fadeOut(300, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('World'));
   }
 
   handbook() {

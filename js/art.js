@@ -417,6 +417,24 @@ function makeTextures(scene) {
   f.generateTexture('frag', 16, 16);
   f.destroy();
 
+  // 传送阵（地上的符文圆阵，画成八边形，像素味比正圆好）
+  const pz = scene.make.graphics({ x: 0, y: 0, add: false });
+  pz.fillStyle(hexInt('#5ad1e8'), 1);
+  pz.fillRect(6, 1, 4, 1); pz.fillRect(6, 14, 4, 1);
+  pz.fillRect(1, 6, 1, 4); pz.fillRect(14, 6, 1, 4);
+  pz.fillRect(3, 3, 2, 1); pz.fillRect(11, 3, 2, 1);
+  pz.fillRect(3, 12, 2, 1); pz.fillRect(11, 12, 2, 1);
+  pz.fillRect(2, 4, 1, 2); pz.fillRect(13, 4, 1, 2);
+  pz.fillRect(2, 10, 1, 2); pz.fillRect(13, 10, 1, 2);
+  pz.fillRect(4, 2, 2, 1); pz.fillRect(10, 2, 2, 1);
+  pz.fillRect(4, 13, 2, 1); pz.fillRect(10, 13, 2, 1);
+  pz.fillStyle(hexInt('#9beaf7'), 1);          // 内圈符文
+  pz.fillRect(7, 4, 2, 1); pz.fillRect(5, 6, 1, 4); pz.fillRect(10, 6, 1, 4); pz.fillRect(7, 11, 2, 1);
+  pz.fillStyle(hexInt('#ffe08a'), 1);          // 中心光点
+  pz.fillRect(7, 7, 2, 2);
+  pz.generateTexture('portal', 16, 16);
+  pz.destroy();
+
   // 闪光点（隐藏处，需放大镜）
   const sp = scene.make.graphics({ x: 0, y: 0, add: false });
   sp.fillStyle(hexInt('#fff9d0'), 1);

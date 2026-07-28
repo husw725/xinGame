@@ -46,11 +46,13 @@ D.CHAPTERS.forEach((c, ci) => {
   ok(reach.length === stand.length,
     `站得上去的 ${stand.length} 格全都能触发（能触发 ${reach.length} 格）`);
 
-  // 背面（Boss 远离水晶的那一侧）必须站得上去且能触发
-  const back = { x: bt.x * 2 - ct.x, y: bt.y * 2 - ct.y };
+  // 背面 = Boss 背对水晶那一侧紧邻的一格（水晶和 Boss 不一定挨着，所以要归一化成一步）
+  const sx = Math.sign(bt.x - ct.x), sy = Math.sign(bt.y - ct.y);
+  const back = { x: bt.x + sx, y: bt.y + sy };
   const backFree = !BLOCK_CHARS.includes(M[back.y][back.x]);
   ok(backFree, `背面 (${back.x},${back.y}) 站得上去`);
-  if (backFree) ok(isBossFront(bt.x, bt.y), `从背面面朝 Boss 能触发`);
+  // 站在背面、面朝 Boss（也就是往 -s 方向看）要能触发
+  ok(backFree && isBossFront(back.x - sx, back.y - sy), '从背面面朝 Boss 能触发');
 });
 
 // ---------- 2. Boss 死后不留隐形墙 ----------
@@ -133,5 +135,63 @@ ok(G.chSave[0].chests !== G.chSave[1].chests, '两章的箱子记录是各自独
 ok(JSON.stringify(G.chSave[0].chests) === '[0,1,2]' && JSON.stringify(G.chSave[1].chests) === '[0,1]',
   '两章互不干扰');
 
+// ---------- 4. 传送阵 ----------
+console.log('\n=== 传送阵：位置和开放条件 ===\n');
+D.CHAPTERS.forEach((c, ci) => {
+  D.loadChapter(ci);
+  const M = D.MAP, spots = [];
+  for (let y = 0; y < D.MAPH; y++) for (let x = 0; x < D.MAPW; x++) if (M[y][x] === 'O') spots.push({ x, y });
+  ok(spots.length === 1, `第${ci + 1}章 有且只有一个传送阵（找到 ${spots.length} 个）`);
+  if (spots.length !== 1) return;
+  const p = spots[0], st = D.PLAYER_START;
+  ok(!BLOCK_CHARS.includes('O'), '传送阵不是障碍物（O 不在 BLOCK_CHARS 里）');
+  // 至少一侧能站人，否则永远走不到
+  const open = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+    .filter(([dx, dy]) => !BLOCK_CHARS.includes(M[p.y + dy][p.x + dx]));
+  ok(open.length >= 1, `第${ci + 1}章 传送阵 (${p.x},${p.y}) 有 ${open.length} 面走得到`);
+  // 出生点附近，孩子一开局就该看见
+  const dist = Math.abs(p.x - st.x) + Math.abs(p.y - st.y);
+  ok(dist <= 6, `第${ci + 1}章 离出生点 ${dist} 格（要 ≤6，一开局就看得见）`);
+  // 不能压在别的东西上
+  ok(!D.NPCS[M[p.y][p.x]], `第${ci + 1}章 传送阵没压在 NPC 上`);
+});
+
+// 开放条件：没打魔王不能往下走，去过的随时回
+const dbody = (src.match(/travelDests\(\) \{\n([\s\S]*?)\n  \}/) || [])[1];
+ok(!!dbody, 'game.js 里找得到 travelDests');
+if (dbody) {
+  const realDests = new Function('GS', 'CHAPTERS', dbody + '\n');
+  const CH = D.CHAPTERS;
+  const mk = (chapter, bossDown, chSave) => ({ chapter, flags: { boss: bossDown }, chSave, frags: [] });
+
+  let d = realDests(mk(0, false, undefined), CH);
+  ok(d.length === 0, '第1章没打魔王：传送阵是暗的，哪儿都去不了');
+
+  d = realDests(mk(0, true, undefined), CH);
+  ok(d.length === 1 && d[0].i === 1 && d[0].seen === false, '第1章打完魔王：只开放第2章（且标记为没去过，要走过场动画）');
+
+  d = realDests(mk(1, false, { 0: {} }), CH);
+  ok(d.length === 1 && d[0].i === 0 && d[0].seen === true,
+    '到了第2章还没打魔王：可以回第1章，但不能往第3章走');
+
+  d = realDests(mk(1, true, { 0: {} }), CH);
+  ok(d.map(x => x.i).join(',') === '0' || d.length === 2,
+    '第2章打完魔王：第1章可回（第3章还没做，所以只有1个目标）');
+
+  // 回到第1章后，第2章要还能去回来（靠 chSave 记录，不是靠 i < chapter）
+  d = realDests(mk(0, true, { 1: {} }), CH);
+  ok(d.some(x => x.i === 1 && x.seen === true), '传送回第1章后：第2章仍然去得回（认 chSave 记录）');
+  ok(!d.some(x => x.i === 1 && x.seen === false), '回去过的章节不重播过场动画');
+}
+
+// 走上去和面朝按A 两条路都要通
+ok(/if \(this\.portal && this\.portal\.x === nx && this\.portal\.y === ny\) \{ this\.travelHub\(\); return; \}/.test(src),
+  '走上去就触发（tryStep）');
+ok(/if \(this\.portal && this\.portal\.x === nx && this\.portal\.y === ny\) \{ this\.travelHub\(\); return true; \}/.test(src),
+  '面朝它按 A 也触发（interactFront）');
+ok(/this\.portal = null;/.test(src),
+  'create 里清掉 this.portal（Phaser 复用场景实例，不清会拿到已销毁的图）');
+ok(!/gotoChapter/.test(src), '旧的菜单跳章入口已删除，只留传送阵一条路');
+
 if (bad) { console.log(`\n✗ ${bad} 处问题`); process.exit(1); }
-console.log('\n✅ Boss 四面可打、死后不挡路、章节往返进度各自保留');
+console.log('\n✅ Boss 四面可打、死后不挡路、章节往返进度各自保留、传送阵门控正确');

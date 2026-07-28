@@ -217,8 +217,38 @@ class DialogBox {
       this.next();
     }
   }
+  // ---- A/B 手柄支持 ----
+  hasChoices() { return this.choiceButtons.length > 0; }
+
+  moveSel(d) {
+    if (!this.hasChoices()) return;
+    this.sel = (this.sel + d + this.choiceButtons.length) % this.choiceButtons.length;
+    this.paintSel();
+  }
+  paintSel() {
+    this.choiceButtons.forEach((b, i) => {
+      b.bg.setFillStyle(i === this.sel ? 0x4a6fbe : 0x2c3e6b);
+      b.bg.setStrokeStyle(i === this.sel ? 4 : 3, i === this.sel ? 0xffe08a : 0xf4e6c0);
+    });
+  }
+  confirmSel() {
+    if (!this.hasChoices()) return false;
+    this.choiceButtons[this.sel].bg.emit('pointerdown');
+    return true;
+  }
+  // B 键：优先选"返回/取消/关闭"这类退出项，没有就选最后一项
+  cancelSel() {
+    if (!this.hasChoices()) return false;
+    const idx = this.choiceButtons.findIndex(b => /返回|取消|关闭|离开|算了|不用|再说|先撤退|不练/.test(b.txt.text));
+    this.sel = idx >= 0 ? idx : this.choiceButtons.length - 1;
+    this.paintSel();
+    this.choiceButtons[this.sel].bg.emit('pointerdown');
+    return true;
+  }
+
   choice(prompt, options, cb) {
     this.clearChoices();   // 防止上一层菜单的按钮残留成"幽灵按钮"
+    this.sel = 0;
     this.open = true;
     this.container.setVisible(true);
     this.text.setText(prompt);
@@ -242,6 +272,7 @@ class DialogBox {
       btn.txt.setScrollFactor(0).setDepth(201);
       this.choiceButtons.push(btn);
     });
+    this.paintSel();
   }
   clearChoices() {
     this.choiceButtons.forEach(b => b.destroy());
@@ -265,6 +296,7 @@ class World extends Phaser.Scene {
     this.inBattle = false;
     this.held = null;
     this.queued = null;
+    this.facing = 'down';
     this.blocked = new Set();
     this.doors = new Set();
     this.npcs = {};   // "x,y" -> npc id
@@ -381,8 +413,9 @@ class World extends Phaser.Scene {
     this.children.list.filter(o => o.type === 'Text' && o.text === '☰ 菜单')
       .forEach(o => o.setScrollFactor(0).setDepth(101));
 
-    // --- 方向键 ---
+    // --- 方向键 + A/B ---
     this.makeDpad();
+    this.makeAB();
     this.cursors = this.input.keyboard.createCursorKeys();
 
     // --- 对话框 ---
@@ -420,10 +453,71 @@ class World extends Phaser.Scene {
         .setStrokeStyle(2, 0xf4e6c0, 0.6).setInteractive();
       this.add.text(x, y, ch, { fontSize: '22px', color: '#fff' }).setOrigin(0.5).setScrollFactor(0).setDepth(90).setAlpha(0.7);
       // ponytail: queued 让"轻点一下"也能走一格 —— pointerup 会在 update() 读到 held 之前就清空它
-      r.on('pointerdown', () => { if (this.dialog.open) return; this.held = d; this.queued = d; });
+      r.on('pointerdown', () => {
+        // 对话选项开着时，上下键改成移动光标
+        if (this.dialog.hasChoices()) {
+          if (d === 'up') this.dialog.moveSel(-1);
+          else if (d === 'down') this.dialog.moveSel(1);
+          return;
+        }
+        if (this.dialog.open) return;
+        this.held = d; this.queued = d;
+      });
       r.on('pointerover', p => { if (p.isDown) this.held = d; });
     });
     this.input.on('pointerup', () => { this.held = null; });
+  }
+
+  // A = 确认 / 对话 / 打开菜单；B = 取消 / 返回 / 关闭
+  makeAB() {
+    const A = makeButton(this, 392, 690, 80, 80, 'A', () => this.pressA(), { fontSize: '30px', color: 0x3a6b45 });
+    const B = makeButton(this, 306, 756, 68, 68, 'B', () => this.pressB(), { fontSize: '26px', color: 0x8a3a3a });
+    [A, B].forEach(b => { b.bg.setScrollFactor(0).setDepth(90); b.txt.setScrollFactor(0).setDepth(91); });
+    this.input.keyboard.on('keydown-Z', () => this.pressA());
+    this.input.keyboard.on('keydown-X', () => this.pressB());
+  }
+
+  pressA() {
+    if (this.inBattle) return;
+    if (this.dialog.hasChoices()) { this.dialog.confirmSel(); return; }
+    if (this.dialog.open) { this.dialog.lastTap = 0; this.dialog.tap(); return; }
+    if (this.interactFront()) return;
+    this.openMenu();
+  }
+
+  pressB() {
+    if (this.inBattle) return;
+    if (this.dialog.hasChoices()) { this.dialog.cancelSel(); return; }
+    if (this.dialog.open) {
+      // 跳过整段对话
+      this.dialog.queue = [];
+      this.dialog.lastTap = 0;
+      this.dialog.tap();
+      return;
+    }
+  }
+
+  // 面朝方向的那一格有东西就交互（不用再撞上去）
+  interactFront() {
+    if (this.moving) return false;
+    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.facing || 'down'];
+    const nx = this.px + dx, ny = this.py + dy;
+    if (nx < 0 || ny < 0 || nx >= MAPW || ny >= MAPH) return false;
+    const key = nx + ',' + ny, ch = MAP[ny][nx];
+
+    if (this.npcs[key]) { this.talkNpc(this.npcs[key]); return true; }
+    if (this.chests[key] !== undefined && !GS.chests.includes(this.chests[key])) {
+      this.tryChest(key, this.chests[key]); return true;
+    }
+    if (this.frags[key] !== undefined) { this.pickFrag(key, this.frags[key], false); return true; }
+    if (this.hidden[key] !== undefined) {
+      if (!GS.tools.includes('lens')) { this.dialog.say(['这里的沙子好像有点不一样……\n可是什么也看不出来。']); return true; }
+      this.pickFrag(key, this.hidden[key], true); return true;
+    }
+    if (this.book && this.book.x === nx && this.book.y === ny) { this.tryStep(this.facing); return true; }
+    if (ch === 'd' && HOUSES[key]) { this.enterHouse(key); return true; }
+    if (ch === 'D') { this.enterDungeon(); return true; }
+    return false;
   }
 
   updateHUD() {
@@ -444,6 +538,7 @@ class World extends Phaser.Scene {
   }
 
   tryStep(dir) {
+    this.facing = dir;
     const delta = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
     const tex = { up: 'hero_u', down: 'hero_d', left: 'hero_s', right: 'hero_s' }[dir];
     this.player.setTexture(tex).setFlipX(dir === 'left');
@@ -1214,6 +1309,15 @@ class Battle extends Phaser.Scene {
     this.timerBar = this.add.image(20, 556, 'px').setOrigin(0, 0.5).setScale(440, 8).setTint(0xffb347).setVisible(false);
 
     this.buttons = [];
+    // 战斗里的 A/B：A=推进消息，B=从魔法/道具子菜单退回
+    const A = makeButton(this, 392, 480, 68, 68, 'A', () => {
+      if (this.state === 'msg') { this.lastTap = 0; this.tapMsg(); }
+    }, { fontSize: '26px', color: 0x3a6b45 });
+    const B = makeButton(this, 88, 480, 60, 60, 'B', () => {
+      if (this.state === 'menu' && this.buttons.some(b => /返回/.test(b.txt.text))) this.showMenu();
+    }, { fontSize: '22px', color: 0x8a3a3a });
+    [A, B].forEach(b => { b.bg.setDepth(90); b.txt.setDepth(91); });
+    this.input.keyboard.on('keydown-Z', () => { if (this.state === 'msg') { this.lastTap = 0; this.tapMsg(); } });
     this.input.keyboard.on('keydown-SPACE', () => this.tapMsg());
     this.input.on('pointerdown', () => {
       if (this.btnConsumed) { this.btnConsumed = false; return; }
@@ -1625,6 +1729,8 @@ class House extends Phaser.Scene {
       { fontSize: '20px', fontFamily: FONT, color: '#fff2c0', align: 'center', wordWrap: { width: 430 } }).setOrigin(0.5);
 
     this.makePad();
+    this.makeABHouse();
+    this.facing = 'up';
     this.cursors = this.input.keyboard.createCursorKeys();
     this.queued = null; this.moving = false; this.busy = false;
   }
@@ -1643,6 +1749,22 @@ class House extends Phaser.Scene {
     makeButton(this, 350, 726, 190, 60, '🚪 出去', () => this.leave(), { fontSize: '20px' });
   }
 
+  // 室内也支持 A/B：A=查看面前的东西，B=出去
+  makeABHouse() {
+    const A = makeButton(this, 392, 690, 80, 80, 'A', () => {
+      if (this.busy) return;
+      const f = this.facing || 'up';
+      const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[f];
+      const nx = this.pos.x + dx, ny = this.pos.y + dy;
+      const ch = (this.rows[ny] || '')[nx];
+      if (ch === 'N') { this.busy = true; this.talkOwner(); }
+      else if (this.furn[nx + ',' + ny]) { this.busy = true; this.search(nx, ny); }
+      else if (ch === 'D') this.leave();
+    }, { fontSize: '30px', color: 0x3a6b45 });
+    const B = makeButton(this, 306, 756, 68, 68, 'B', () => this.leave(), { fontSize: '26px', color: 0x8a3a3a });
+    [A, B].forEach(b => { b.bg.setDepth(90); b.txt.setDepth(91); });
+  }
+
   update() {
     if (this.moving || this.busy) return;
     let d = this.queued; this.queued = null;
@@ -1656,6 +1778,7 @@ class House extends Phaser.Scene {
   }
 
   step(dir) {
+    this.facing = dir;
     const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
     this.hero.setTexture({ up: 'hero_u', down: 'hero_d', left: 'hero_s', right: 'hero_s' }[dir]).setFlipX(dir === 'left');
     const nx = this.pos.x + dx, ny = this.pos.y + dy;

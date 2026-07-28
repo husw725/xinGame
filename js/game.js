@@ -1601,7 +1601,11 @@ class World extends Phaser.Scene {
   }
 
   checkRevenge() {
-    if (GS.pool.length >= 3 && !this.revengeSprite && !GS.flags.bossFight) {
+    if (this.indoor) return;
+    const rt = REVENGE_TILE;
+    // 离玩家太近就先不刷 —— 否则刚打完转身它就在脚边，看起来像"打不完"
+    const near = Math.abs(this.px - rt.x) + Math.abs(this.py - rt.y) <= 3;
+    if (GS.pool.length >= 3 && !this.revengeSprite && !near) {
       const { x, y } = REVENGE_TILE;
       this.revengeSprite = this.add.image(x * TILE + 16, y * TILE + 16, 'revenge').setScale(2).setDepth(6);
       this.revengeSprite.gx = x; this.revengeSprite.gy = y;
@@ -2127,6 +2131,14 @@ class Battle extends Phaser.Scene {
       if (!this.isRevenge && GS.pool.length < 10 && !GS.pool.some(q => q.text === this.q.text)) {
         GS.pool.push({ text: this.q.text, options: this.q.options, answer: this.q.answer, tip: this.q.tip });
       }
+      // GM 下答错也要秒掉。否则敌人不掉血、自己又不死，双方僵住，战斗永远打不完
+      if (GS.gm) {
+        this.enemy.hp = 0;
+        this.updateBars();
+        this.showMsgs([`答错了！正确答案：${this.q.answer}\n💡 ${this.q.tip}`,
+          '（GM：照样一击必杀）'], () => this.victory());
+        return;
+      }
       this.showMsgs([`答错了！正确答案：${this.q.answer}\n💡 ${this.q.tip}`], () => this.enemyTurn(false, true));
     }
   }
@@ -2199,7 +2211,8 @@ class Battle extends Phaser.Scene {
     } else {
       msgs.push('练习结束，做得好！');
     }
-    if (this.isRevenge && GS.pool.length > 0) msgs.push(`还有 ${GS.pool.length} 道错题没消化，\n怨念怪还会再来哦！`);
+    if (this.isRevenge && GS.gm) { GS.pool = []; msgs.push('（GM：错题池已清空）'); }
+    else if (this.isRevenge && GS.pool.length > 0) msgs.push(`还有 ${GS.pool.length} 道错题没消化，\n怨念怪还会再来哦！`);
     if (this.isRevenge && GS.pool.length === 0) msgs.push('错题全部消化完毕，怨念怪消散了！');
     this.updateBars();
     saveGame();

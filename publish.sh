@@ -29,6 +29,9 @@ echo "版本戳 $STAMP"
 echo "--- 启动自检（能不能跑起来）---"
 node boot_check.js > /dev/null || { echo "✗ boot_check.js 未通过：游戏起不来，已中止发布"; exit 1; }
 echo "✓ 通过"
+echo "--- 战斗流程校验（含GM模式）---"
+node battle_check.js > /dev/null || { echo "✗ battle_check.js 未通过：战斗流程会卡住"; exit 1; }
+echo "✓ 通过"
 echo "--- 数值平衡校验 ---"
 node balance_sim.js  > /dev/null || { echo "✗ balance_sim.js 未通过，已中止发布"; exit 1; }
 echo "✓ 通过"

@@ -470,7 +470,7 @@ class World extends Phaser.Scene {
         ? ['你夺回了记忆水晶，太了不起了！',
            GS.frags.length < 8
              ? `不过你手上那些发黄的纸……\n还差 ${8 - GS.frags.length} 页呢。\n用放大镜在沙漠里找找看。`
-             : '那本日记你也拼齐了。\n小默……这孩子后来怎么样了呢。']
+             : '这一章的八页你都拼齐了。\n可日记明显还没写完——\n后面的页数，大概散在别的地方。']
         : ['南边沙漠里的口诀骆驼王守着记忆水晶。',
            '路上有一扇大石门，推不开的。\n旁边石室里有会动的石箱，\n那是开门的机关。',
            '沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。',
@@ -501,7 +501,7 @@ class World extends Phaser.Scene {
     const p = GS.p;
     this.dialog.choice(
       `勇者 Lv${p.lv}　💰${p.gold}\nHP ${p.hp}/${p.maxhp}　MP ${p.mp}/${p.maxmp}\n⚔️${totalAtk()} 🛡️${totalDef()} 👟${totalSpd()}`,
-      ['🎽 装备栏', '✨ 魔法（野外）', `📖 冒险手册（碎片 ${GS.frags.length}/8）`, '关闭'], i => {
+      ['🎽 装备栏', '✨ 魔法（野外）', `📖 冒险手册（本章碎片 ${GS.frags.length}/8）`, '关闭'], i => {
         if (i === 0) this.equipMenu(() => this.openMenu());
         else if (i === 1) this.fieldSpells();
         else if (i === 2) this.handbook();
@@ -511,8 +511,8 @@ class World extends Phaser.Scene {
   handbook() {
     const toolTxt = GS.tools.length ? GS.tools.map(t => t === 'lens' ? '🔍放大镜' : t).join(' ') : '（还没有）';
     this.dialog.choice(
-      `冒险手册\n碎片 ${GS.frags.length}/8　图鉴 ${GS.dex.length}/5\n工具：${toolTxt}`,
-      ['📜 小默的日记', '👾 怪物图鉴', '↩️ 返回'], i => {
+      `冒险手册\n本章碎片 ${GS.frags.length}/8　图鉴 ${GS.dex.length}/5\n工具：${toolTxt}`,
+      ['📜 捡到的日记', '👾 怪物图鉴', '↩️ 返回'], i => {
         if (i === 0) this.readDiary();
         else if (i === 1) this.showDex();
         else this.openMenu();
@@ -530,7 +530,7 @@ class World extends Phaser.Scene {
     if (GS.frags.length < 8) {
       lines.push(`还差 ${8 - GS.frags.length} 页。\n中间断掉的地方，读不下去。`);
     } else {
-      lines.push('八页连起来了。\n写日记的孩子叫小默……');
+      lines.push('这八页连起来了。\n可开头和结尾都没有——\n这孩子究竟是谁？');
     }
     this.dialog.say(lines, () => this.handbook());
   }
@@ -705,7 +705,7 @@ class World extends Phaser.Scene {
       lines.push(item.msg);
       if (!GS.frags.includes(item.idx)) {
         GS.frags.push(item.idx);
-        lines.push(FRAGMENTS[item.idx].text, `（记忆碎片 ${GS.frags.length}/8）`);
+        lines.push(FRAGMENTS[item.idx].text, `（本章记忆碎片 ${GS.frags.length}/8）`);
       }
     } else if (item.kind === 'gold') {
       GS.p.gold += item.val;
@@ -724,8 +724,8 @@ class World extends Phaser.Scene {
     const lines = wasHidden
       ? ['放大镜下，沙子里露出一角发黄的纸。', FRAGMENTS[n].text]
       : ['地上有一页发黄的纸……', FRAGMENTS[n].text];
-    lines.push(`（记忆碎片 ${GS.frags.length}/8）`);
-    if (GS.frags.length === 8) lines.push('八页都找到了。\n这本日记的主人……到底是谁？');
+    lines.push(`（本章记忆碎片 ${GS.frags.length}/8）`);
+    if (GS.frags.length === 8) lines.push('这一章的八页都找到了。\n日记还长着呢。');
     this.dialog.say(lines);
   }
 
@@ -1397,7 +1397,7 @@ class Puzzle extends Phaser.Scene {
     if (rw.kind === 'gold') { GS.p.gold += rw.val; lines.push(`房间深处有 💰${rw.val} 金币！`); }
     else if (rw.kind === 'frag' && !GS.frags.includes(rw.idx)) {
       GS.frags.push(rw.idx);
-      lines.push('地上有一页发黄的纸……', FRAGMENTS[rw.idx].text, `（记忆碎片 ${GS.frags.length}/8）`);
+      lines.push('地上有一页发黄的纸……', FRAGMENTS[rw.idx].text, `（本章记忆碎片 ${GS.frags.length}/8）`);
     }
     const allDone = SOKOBAN.every((_, i) => GS.rooms.includes(i));
     if (allDone) { GS.flags.puzzle = true; lines.push('三间石室都解开了！\n沙漠深处的大石门应该开了。'); }

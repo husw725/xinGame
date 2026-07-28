@@ -57,6 +57,6 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 git push -q origin main
 
 echo
-echo "✅ 已发布，版本号 $STAMP（约 1 分钟后生效）"
+echo "✅ 已发布，版本号 ${STAMP}（约 1 分钟后生效）"
 echo "   https://husw725.github.io/xinGame/"
 echo "   打开后看右下角，应该显示 v$STAMP"

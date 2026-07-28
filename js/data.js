@@ -524,83 +524,71 @@ function _row(feats) {
 const _seal = 'W'.repeat(10) + 'sssss' + 'W'.repeat(10);
 const _open = 'W' + 's'.repeat(23) + 'W';
 
-const CH2_MAP = [
-  "WWWWWWWWWWWWWWWWWWWWWWWWW", // 0
-  "WsssssssssssssssssssssssW",
-  "WsrrrssssssssssssssrrrssW", // 2  两栋房子
-  "WswwwssssssssssssssswwwsW",
-  "WswdwssssssssssssssswdwsW", // 4  门: (3,4) (20,4)
-  "WsssssssPsssssssPsssssssW", // 5  柱子
-  "Wsss4sssssssssssss5sssssW", // 6  账房先生 / 卖糖的姐姐
-  "WsrrrsssssssssssssssssssW", // 7
-  "WswwwsssssssssssssssssssW",
-  "WswdwsssssssssssssssssssW", // 9  门: (3,9)
-  "Wsss6sssssPsssssPsss7sssW", // 10 小满(委托) / 扫地的老人
-  "WsssssssssssssssssssssssW",
-  "Wsss8sssssssssssssssssssW", // 12 阿力(闲聊)
-  "WWWWWWWWWWWsssWWWWWWWWWWW", // 13 回廊入口
-  _open,                        // 14
-  _open,                        // 15
-  _row({}),                     // 16 主廊成形
-  _row({}),                     // 17
-  _row({ 9:'s' }),              // 18 ← 左支路开口
-  _row({}),                     // 19
-  _row({ 3:'p' }),              // 20 碎片
-  _row({ 6:'9' }),              // 21 迷路的货郎(线索)
-  _row({ 5:'c' }),              // 22 宝箱
-  _seal,                        // 23
-  _row({}),                     // 24
-  _row({}),                     // 25
-  _row({ 15:'s' }),             // 26 ← 右支路开口
-  _row({}),                     // 27
-  _row({ 19:'c' }),             // 28 宝箱
-  _row({ 21:'p' }),             // 29 碎片
-  _seal,                        // 30
-  _row({}),                     // 31
-  _row({}),                     // 32
-  _row({ 9:'s' }),              // 33 ← 左支路开口
-  _row({}),                     // 34
-  _row({ 3:'h' }),              // 35 隐藏(需钩爪)
-  _row({ 6:'b' }),              // 36 小满的糖罐(委托物)
-  _row({ 7:'h' }),              // 37 隐藏(需钩爪)
-  _seal,                        // 38
-  _row({}),                     // 39
-  _row({}),                     // 40
-  _row({ 15:'s' }),             // 41 ← 右支路开口
-  _row({}),                     // 42
-  _row({ 19:'h' }),             // 43 隐藏(需钩爪)
-  _row({ 21:'c' }),             // 44 宝箱
-  _seal,                        // 45
-  _open,                        // 46 迷宫前广场
-  _open,                        // 47
-  "Wsssssssss~D~sssssssssssW", // 48 分糖石室入口（两侧水池）
-  _open,                        // 49
-  "WWWWWWWWWWWWGWWWWWWWWWWWW", // 50 石门
-  _open,                        // 51 Boss 区
-  _open,                        // 52
-  "WsssssssssssXsssssssssssW", // 53 记忆水晶
-  "WsssssssssssBsssssssssssW", // 54 分糖巨人
-  _open,                        // 55
-  _open,                        // 56
-  "WWWWWWWWWWWWWWWWWWWWWWWWW", // 57
-];
+// 环形回廊：外圈走廊绕一整圈，中间是天井（水晶和巨人在里面，一进门就看得见但进不去）。
+// 四角各有一间侧厅。和第一章的"一条主路走到底"是两种完全不同的空间。
+function _ch2map() {
+  const W = 25, H = 58, g = Array.from({ length: H }, () => Array(W).fill('W'));
+  const put = (x, y, c) => { if (y >= 0 && y < H && x >= 0 && x < W) g[y][x] = c; };
+  const fill = (x1, y1, x2, y2, c) => { for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) put(x, y, c); };
+
+  // --- 上方小镇 ---
+  fill(1, 1, 23, 12, 's');
+  fill(2, 2, 4, 4, 'r'); fill(2, 3, 4, 4, 'w'); put(3, 4, 'd');       // 左屋
+  fill(19, 2, 21, 4, 'r'); fill(19, 3, 21, 4, 'w'); put(20, 4, 'd');  // 右屋
+  fill(2, 7, 4, 9, 'r'); fill(2, 8, 4, 9, 'w'); put(3, 9, 'd');       // 学堂
+  [[8, 5], [16, 5], [10, 10], [16, 10]].forEach(([x, y]) => put(x, y, 'P'));
+  put(4, 6, '4'); put(18, 6, '5'); put(4, 10, '6'); put(20, 10, '7'); put(4, 12, '8');
+
+  // --- 进廊通道 ---
+  fill(11, 13, 13, 16, 's');
+
+  // --- 环形走廊（3 格宽，绕天井一圈）---
+  fill(4, 17, 20, 19, 's');   // 上
+  fill(4, 45, 20, 47, 's');   // 下
+  fill(4, 17, 6, 47, 's');    // 左
+  fill(18, 17, 20, 47, 's');  // 右
+
+  // --- 天井（外墙 + 里面的空地）---
+  fill(8, 21, 16, 43, 's');   // 天井内部
+  put(12, 20, 'G');           // 天井north墙上的石门
+  put(12, 30, 'X'); put(12, 32, 'B');
+
+  // --- 四角侧厅（挖进外墙）---
+  const hall = (x1, y1, x2, y2, doorX, doorY) => { fill(x1, y1, x2, y2, 's'); put(doorX, doorY, 's'); };
+  hall(1, 20, 2, 25, 3, 22);    // 西上厅
+  hall(22, 20, 23, 25, 21, 22); // 东上厅
+  hall(1, 39, 2, 44, 3, 42);    // 西下厅
+  hall(22, 39, 23, 44, 21, 42); // 东下厅
+
+  // --- 内容 ---
+  put(1, 22, 'p'); put(2, 25, 'h');    // 西上厅：碎片 + 隐藏
+  put(22, 22, 'c'); put(23, 25, 'h');  // 东上厅：宝箱 + 隐藏
+  put(1, 44, 'c'); put(2, 39, 'h');    // 西下厅：宝箱 + 隐藏（钩爪）
+  put(22, 44, 'p'); put(23, 39, 'h');  // 东下厅：碎片 + 隐藏
+  put(5, 32, 'c');                     // 左廊：第三个宝箱
+  put(19, 30, '9');                    // 右廊：货郎
+  put(12, 46, 'D');                    // 下廊：分糖石室入口
+
+  return g.map(r => r.join(''));
+}
+const CH2_MAP = _ch2map();
 
 const CH2_START   = { x:12, y:11 };
-const CH2_REVENGE = { x:13, y:14 };
+const CH2_REVENGE = { x:12, y:15 };
 
 const CH2_SPAWNS = [
-  { k:'spider', x:12, y:15 },
-  { k:'spider', x:11, y:17 },
-  { k:'spider', x:4,  y:19 },
-  { k:'imp2',   x:13, y:21 },
-  { k:'spider', x:12, y:25 },
-  { k:'owl',    x:19, y:27 },
-  { k:'imp2',   x:11, y:29 },
-  { k:'owl',    x:13, y:34 },
+  { k:'spider', x:12, y:18 },   // 上廊
+  { k:'spider', x:7,  y:18 },
+  { k:'owl',    x:17, y:18 },
+  { k:'spider', x:5,  y:24 },   // 左廊
   { k:'imp2',   x:5,  y:36 },
-  { k:'spider', x:12, y:40 },
-  { k:'owl',    x:20, y:42 },
-  { k:'imp2',   x:12, y:47 },
+  { k:'owl',    x:5,  y:42 },
+  { k:'imp2',   x:19, y:24 },   // 右廊
+  { k:'spider', x:19, y:38 },
+  { k:'owl',    x:19, y:44 },
+  { k:'imp2',   x:8,  y:46 },   // 下廊
+  { k:'spider', x:16, y:46 },
+  { k:'imp2',   x:14, y:46 },
 ];
 
 // 日记第 9–16 页：越来越孤立（不给身份线索）
@@ -627,21 +615,35 @@ const CH2_NPCS = {
   '9': { name:'迷路的货郎',tex:'npc_traveler', role:'clue', clue:'c2c' },
 };
 
+// 推理型线索：三个人各说一句，只有一个说真话。
+// 候选 3/6/9 —— 只有"口令是6"能让恰好一人说真话（对应人教版二下·数学广角·推理）
+// 推理型线索：三个人各说一句，只有一个说真话。
+// 候选 3/6/9 —— 只有"口令是6"能让恰好一人说真话（对应人教版二下·数学广角·推理）
 const CH2_CLUES = {
-  c2a: { lock:'chest3', from:'账房先生',   ask:'口令头一个数？\n十五颗糖分给三个人，一人几颗。',
-         answer:5, note:'口令第1个数 = 15÷3' },
-  c2b: { lock:'chest3', from:'卖糖的姐姐', ask:'第二个数啊——\n二十颗糖装五袋，一袋几颗？',
-         answer:4, note:'口令第2个数 = 20÷5' },
-  c2c: { lock:'lore',   from:'迷路的货郎', ask:'回廊墙缝里卡着东西。\n可惜我够不着，得有带钩子的家伙。',
-         answer:null, note:'墙缝里有东西（先拿到钩爪再回来）' },
-  c2d: { lock:'chest3', from:'小满',       ask:'第三个数！\n我数过的——十七颗糖分给六个人，会剩几颗？',
-         answer:5, note:'口令第3个数 = 17÷6 的余数' },
+  c2a: { lock:'riddle', from:'账房先生',   ask:'我说：口令是 3。',
+         note:'账房先生说「口令是 3」' },
+  c2b: { lock:'riddle', from:'卖糖的姐姐', ask:'我说：口令不是 6。',
+         note:'卖糖的姐姐说「口令不是 6」' },
+  c2c: { lock:'riddle', from:'迷路的货郎', ask:'我说：口令不是 3。\n……不过我们三个里，\n只有一个人说了真话。',
+         note:'货郎说「口令不是 3」；三人中只有一人说真话' },
+  c2d: { lock:'lore',   from:'扫地的老人', ask:'墙缝里卡着东西。\n手伸不进去，得有带钩子的家伙。',
+         note:'墙缝藏有东西（先拿到钩爪再回来）' },
 };
+
+// 推理锁：候选与答案，答案由"恰好一人说真话"推出
+const CH2_RIDDLE = {
+  candidates: [3, 6, 9],
+  answer: 6,
+  explain: '如果口令是 3：账房先生说对了、姐姐也说对了 —— 两个人说真话，不行。\n' +
+           '如果是 9：姐姐和货郎都说对了 —— 还是两个，不行。\n' +
+           '如果是 6：只有货郎说对了 —— 正好一个人！',
+};
+
 
 const CH2_LOCKS = [
   { kind:'calc',    icon:'🔢', hint:'箱盖上刻着一道除法题' },
   { kind:'balance', icon:'⚖️', hint:'箱盖上是一架天平，要找出相等的那个' },
-  { kind:'code',    icon:'🔒', hint:'三个数字轮盘。\n营地里有人知道口令。', clues:['c2a','c2b','c2d'] },
+  { kind:'riddle',  icon:'🧩', hint:'箱盖上刻着：\n「三个人只有一个说真话。」\n镇上问齐三句话再来。', clues:['c2a','c2b','c2c'] },
 ];
 
 const CH2_CHESTS = [
@@ -651,13 +653,35 @@ const CH2_CHESTS = [
 ];
 
 const CH2_HOUSES = {
-  '3,4':  { name:'账房总管家', owner:'1', rows:[
-    "WWWWWWWWW","WFuFFFuFW","WFFFFFFFW","WFtFNFtFW","WFFFFFFFW","WBFFFFFpW","WFFFDFFFW","WWWWWWWWW" ]},
-  '21,4': { name:'商人的铺子', owner:'2', rows:[
-    "WWWWWWWWW","WuuFFFuuW","WFFFFFFFW","WFFFNFFFW","WFtFFFtFW","WpFFFFFBW","WFFFDFFFW","WWWWWWWWW" ]},
-  '3,9':  { name:'回廊学堂',   owner:'3', rows:[
-    "WWWWWWWWW","WFuFFFuFW","WtFtFtFtW","WFFFNFFFW","WtFtFtFtW","WpFFFFFpW","WFFFDFFFW","WWWWWWWWW" ]},
+  '3,4':  { name:'账房', owner:'1', rows:[
+    "WWWWWWWWW",
+    "WuuuFuuuW",
+    "WFFFFFFFW",
+    "WtFFNFFtW",
+    "WFFFFFFFW",
+    "WuFFFFFuW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '20,4': { name:'货栈', owner:'2', rows:[
+    "WWWWWWWWW",
+    "WuFuFuFuW",
+    "WFFFFFFFW",
+    "WuFFNFFuW",
+    "WFFFFFFFW",
+    "WtFFFFFtW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '3,9':  { name:'回廊学堂', owner:'3', rows:[
+    "WWWWWWWWW",
+    "WFFtttFFW",
+    "WFtFFFtFW",
+    "WFtFNFtFW",
+    "WFtFFFtFW",
+    "WuFtFtFuW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
 };
+
 
 const CH2_SHOP = ['tri_sword','compass','iron_h','abacus_s','eraser_s','wind_b','dict','divider'];
 
@@ -688,7 +712,7 @@ const CHAPTERS = [
     frags:CH2_FRAGS, npcs:CH2_NPCS, clues:CH2_CLUES, locks:CH2_LOCKS,
     chests:CH2_CHESTS, houses:CH2_HOUSES, shop:CH2_SHOP,
     puzzle:{ kind:'candy', rooms:CH2_CANDY },
-    bossTile:{ x:12, y:54 }, crystalTile:{ x:12, y:53 },
+    bossTile:{ x:12, y:32 }, crystalTile:{ x:12, y:30 },
     hiddenBase:5, hiddenTool:'hook', hiddenToolName:'词语钩爪' },
 ];
 
@@ -723,6 +747,6 @@ if (typeof module !== 'undefined') {
   module.exports = { MAP, MAPW, MAPH, ENEMIES, SPAWNS, GEAR, SLOTS, SHOP_GEAR, SPELLS, spellsAt,
                      FRAGMENTS, CHESTS, SOKOBAN, PLAYER_START, REVENGE_TILE,
                      NPCS, CLUES, CHEST_LOCKS, TOTAL_FRAGS, HOUSES, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
-                     CHAPTERS, loadChapter, CH2_CANDY, fragGlobal, fragText, fragsOfChapter,
+                     CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, fragGlobal, fragText, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
 }

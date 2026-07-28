@@ -29,8 +29,11 @@ echo "版本戳 $STAMP"
 echo "--- 数值平衡校验 ---"
 node balance_sim.js  > /dev/null || { echo "✗ balance_sim.js 未通过，已中止发布"; exit 1; }
 echo "✓ 通过"
-echo "--- 推箱子可解性校验 ---"
+echo "--- 谜题可解性校验 ---"
 node puzzle_check.js > /dev/null || { echo "✗ puzzle_check.js 未通过，已中止发布"; exit 1; }
+echo "✓ 通过"
+echo "--- 章节多样性校验 ---"
+node variety_check.js > /dev/null || { echo "✗ variety_check.js 未通过：新章节太像旧章节"; exit 1; }
 echo "✓ 通过"
 
 # 用 status --porcelain：git diff 看不到新增的未追踪文件

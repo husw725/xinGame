@@ -442,6 +442,16 @@ class World extends Phaser.Scene {
     // --- 开场剧情 ---
     if (!GS.flags.intro) {
       this.time.delayedCall(400, () => {
+        if (GS.chapter === 1) {
+          this.dialog.say([
+            '（回廊的镇子很安静。）',
+            '桌子只剩一半，锅被劈成了三份，\n门板整整齐齐码在墙边。',
+            '一个女孩坐在台阶上，\n面前摆着两堆一样多的石子。',
+            '「巨人说，什么都要分匀。」\n「分不匀的，他就拿走。」',
+            '回廊绕一圈就是一整天。\n中间的天井里，水晶在发光。',
+          ], () => { GS.flags.intro = true; saveGame(); this.banner('第二章 · 除法回廊'); });
+          return;
+        }
         this.dialog.say([
           '暑假第一天，你翻开课本——咦？\n字和数字正在一个个消失！',
           '一道白光闪过……\n你被吸进了课本里的【知识王国】。',
@@ -658,6 +668,7 @@ class World extends Phaser.Scene {
     if (npc && npc.role === 'lore')   { this.npcLore(npc); return; }
     if (npc && npc.role === 'chat')   { this.npcChat(npc); return; }
     if (id === '1') { // 村长
+      if (GS.flags.boss && GS.chapter + 1 < CHAPTERS.length) { this.elderTravel(); return; }
       const lines = GS.flags.boss
         ? ['你夺回了记忆水晶，太了不起了！',
            GS.frags.length < 8
@@ -843,6 +854,69 @@ class World extends Phaser.Scene {
     });
   }
 
+  // 打完 Boss 后，长老指路下一章 —— 让它是一段路，不是一个按钮
+  elderTravel() {
+    const nx = CHAPTERS[GS.chapter + 1];
+    const left = 8 - chapterFrags();
+    const intro = GS.chapter === 0
+      ? ['你夺回了第一颗水晶！\n可水晶一直在抖……',
+         '（长老捧起水晶，它慢慢转向北方。）',
+         '它在指路。\n第二颗水晶在【除法回廊】。',
+         '那地方原本热闹。\n直到一个巨人住了进去 ——',
+         '他不抢东西，他"分"东西。\n什么都要分成一样多的几份。',
+         '锅碗、粮食、连门板都拆了平分。\n分不完的零头堆在角落，谁也不敢动。']
+      : ['水晶又开始指路了……'];
+    if (left > 0) intro.push(`对了，你手上那本日记 ——\n本章还差 ${left} 页。\n（出发前可以再找找）`);
+    this.dialog.say(intro, () => {
+      this.dialog.choice('现在就出发去除法回廊吗？', ['出发', '再等等'], i => {
+        if (i !== 0) { this.dialog.say(['不急，随时来找我。'], null, '长老'); return; }
+        this.travelTo(GS.chapter + 1);
+      });
+    }, '长老');
+  }
+
+  // 旅行过场：黑屏 + 旁白，走完才落地
+  travelTo(idx) {
+    this.inBattle = true;
+    const cam = this.cameras.main;
+    cam.fadeOut(700, 0, 0, 0);
+    cam.once('camerafadeoutcomplete', () => {
+      const veil = this.add.rectangle(W / 2, H / 2, W, H, 0x000000).setScrollFactor(0).setDepth(400);
+      const txt = this.add.text(W / 2, H / 2, '', { fontSize: '21px', fontFamily: FONT, color: '#ffe08a',
+        align: 'center', wordWrap: { width: 400 }, lineSpacing: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(401);
+      cam.fadeIn(1, 0, 0, 0);
+      const beats = [
+        '你跟着水晶往北走。',
+        '沙子渐渐变成石板。',
+        '风声停了，脚步声开始有回音。',
+        '一圈一圈的石廊立在眼前 ——\n【除法回廊】。',
+      ];
+      let k = 0;
+      const step = () => {
+        if (k >= beats.length) {
+          veil.destroy(); txt.destroy();
+          this.enterChapter(idx);
+          return;
+        }
+        txt.setText(beats[k++]).setAlpha(0);
+        this.tweens.add({ targets: txt, alpha: 1, duration: 500, hold: 1100, yoyo: true, onComplete: step });
+      };
+      step();
+    });
+  }
+
+  enterChapter(idx) {
+    GS.chapter = idx;
+    GS.flags = { intro: false, boss: false, puzzle: false };
+    GS.chests = []; GS.locks = []; GS.rooms = [];
+    GS.clues = []; GS.quest = {}; GS.searched = {}; GS.pool = [];
+    GS.pos = null; GS.lastBattle = null; GS.fromPuzzle = false; GS.fromHouse = null;
+    loadChapter(idx);
+    GS.p.hp = GS.p.maxhp; GS.p.mp = GS.p.maxmp;
+    saveGame();
+    this.scene.start('World');
+  }
+
   openShop() {
     this.dialog.choice(`欢迎光临！💰${GS.p.gold}`,
       ['🛒 买装备', '💰 卖装备（原价75%）', '🧪 买道具', '🎽 换装备', '离开'], i => {
@@ -955,6 +1029,20 @@ class World extends Phaser.Scene {
   npcClue(id, npc) {
     const c = CLUES[npc.clue];
     const first = !GS.clues.includes(npc.clue);
+    if (GS.chapter === 1) {
+      const said = {
+        '4': first ? ['（账房先生噼里啪啦打着算盘。）', c.ask, '信不信由你。']
+                   : ['我说过了：口令是 3。'],
+        '5': first ? ['来块糖吧，甜的。', c.ask, '我可没骗你哦——大概吧。']
+                   : ['我说的是：口令不是 6。'],
+        '9': GS.tools.includes('hook')
+               ? ['你有钩子了！\n那墙缝里的东西归你了。']
+               : first ? ['（货郎放下担子。）', c.ask, '你自己想吧，小家伙。']
+                       : ['我说：口令不是 3。\n只有一个人说真话，别忘了。'],
+      }[id];
+      this.dialog.say(said, () => { if (first) this.addClue(npc.clue); }, npc.name);
+      return;
+    }
     const lines = {
       '4': first
         ? ['（叮、叮——铁匠头也不抬。）', '沙漠尽头那个箱子？我知道口令。',
@@ -978,8 +1066,61 @@ class World extends Phaser.Scene {
     this.dialog.say(lines, () => { if (first) this.addClue(npc.clue); }, npc.name);
   }
 
+  // ---- 第2章委托：传话（不是取物）。三趟来回，让两个 NPC 产生关系 ----
+  questRelay(npc) {
+    const q = GS.quest;
+    if (!q.step) {
+      this.dialog.say(['（小满背对着你。）', '我才不要先开口。',
+        '阿力那天说我……说我笨。', '你去问问他，他敢不敢当面说。'], () => {
+        q.step = 'ask_boy'; saveGame();
+        this.dialog.say(['（去找阿力问问吧。）']);
+      }, npc.name);
+    } else if (q.step === 'ask_boy') {
+      this.dialog.say(['你问他了吗？'], null, npc.name);
+    } else if (q.step === 'back_girl') {
+      this.dialog.say(['他说「笨手笨脚」？',
+        '……那是我打翻糖罐那天。', '他不是说我笨。他是说我手笨。',
+        '（小满小声说：）\n那我也有不对。',
+        '你把这句带给他 —— \n就说糖罐我赔他一个。'], () => {
+        q.step = 'back_boy'; saveGame();
+      }, npc.name);
+    } else if (q.step === 'done') {
+      this.dialog.say(['我们和好啦！', '对了，那个上锁的箱子……\n我们俩一起想过口令，想不出来。',
+        '你去问问镇上那三个人吧。'], null, npc.name);
+    } else {
+      this.dialog.say(['……他怎么说？'], null, npc.name);
+    }
+  }
+
+  // 阿力（闲聊 NPC 在第2章兼任传话对象）
+  questBoy(npc) {
+    const q = GS.quest;
+    if (q.step === 'ask_boy') {
+      this.dialog.say(['小满让你来的？',
+        '我没说她笨啊。', '我说的是「笨手笨脚」——\n她把糖罐打翻了嘛。',
+        '……她生气了？'], () => { q.step = 'back_girl'; saveGame(); }, npc.name);
+    } else if (q.step === 'back_boy') {
+      this.dialog.say(['她说要赔我糖罐？',
+        '不用啦！那罐子本来就有裂。',
+        '（阿力挠头。）\n……我去找她说说。',
+        '谢谢你跑这么多趟。\n这个给你 ——'], () => {
+        q.step = 'done';
+        GS.p.gold += 150;
+        if (!GS.p.bag.includes('hookband')) GS.p.bag.push('hookband');
+        saveGame(); this.updateHUD();
+        this.dialog.say(['得到 💰150 金币\n和【钩爪腕带】！\n（背包里，可以换上）']);
+      }, npc.name);
+    } else if (q.step === 'done') {
+      this.dialog.say(['我跟小满和好了。', '下次她再打翻糖罐，\n我帮她捡。'], null, npc.name);
+    } else {
+      this.dialog.say(['我叫阿力。', '回廊里那些蜘蛛，\n最喜欢考除法了。',
+        '……小满最近不理我，\n不知道为什么。'], null, npc.name);
+    }
+  }
+
   // ---- 委托 NPC：线索要靠帮忙换 ----
   npcQuest(id, npc) {
+    if (GS.chapter === 1) { this.questRelay(npc); return; }
     const st = GS.quest.dodo;
     if (!st) {
       this.dialog.say(['呜……我把作业本弄丢了。',
@@ -1006,6 +1147,22 @@ class World extends Phaser.Scene {
 
   // ---- 暗线 NPC：让主线谜团从环境里渗出来 ----
   npcLore(npc) {
+    if (GS.chapter === 1) {
+      const c = CLUES.c2d;
+      const first = !GS.clues.includes('c2d');
+      const lines = GS.flags.boss
+        ? ['（老人还在扫地。）',
+           '巨人走了，东西还是散的。',
+           '很多年前也有个孩子，\n把算错的纸一张张扔进回廊。',
+           '风每次都吹回来。\n他就一张张再扔。',
+           '……你捡的那些纸，\n是不是他扔的？']
+        : ['（老人慢慢地扫着地。）',
+           '这条回廊，我扫了三十年。',
+           c.ask,
+           '早年有个孩子常来这儿。\n一个人绕着走，一圈又一圈。'];
+      this.dialog.say(lines, () => { if (first) this.addClue('c2d'); }, npc.name);
+      return;
+    }
     const lines = GS.flags.boss
       ? ['沙漠安静下来了。',
          '以前有个孩子，总一个人坐在沙丘上。\n一坐就是一下午。',
@@ -1020,6 +1177,7 @@ class World extends Phaser.Scene {
 
   // ---- 闲聊 NPC：世界要活，台词随进度变 ----
   npcChat(npc) {
+    if (GS.chapter === 1) { this.questBoy(npc); return; }
     const lines = GS.flags.boss
       ? ['你把骆驼王打败啦？！',
          '我长大也要当勇者！\n……不过我得先学会九九表。']
@@ -1041,6 +1199,7 @@ class World extends Phaser.Scene {
       if (lock.kind === 'calc')    this.lockCalc(key, n, 'mult');
       else if (lock.kind === 'balance') this.lockCalc(key, n, 'balance');
       else if (lock.kind === 'code')    this.lockCode(key, n, lock);
+      else if (lock.kind === 'riddle')  this.lockRiddle(key, n, lock);
     });
   }
 
@@ -1062,6 +1221,35 @@ class World extends Phaser.Scene {
           () => this.lockCalc(key, n, qtype, tries + 1));
       }
     });
+  }
+
+  // 推理锁：三个人各说一句，只有一个说真话 —— 人教版二下「数学广角·推理」
+  lockRiddle(key, n, lock) {
+    const known = lock.clues.filter(k => GS.clues.includes(k));
+    if (known.length < lock.clues.length) {
+      this.dialog.say([
+        `箱盖上刻着：「三个人只有一个说真话。」`,
+        `你只听到了 ${known.length}/3 句话。`,
+        '先去把三个人的话都问齐。\n（记在冒险手册的线索本里）',
+      ]);
+      return;
+    }
+    const R = CH2_RIDDLE;
+    this.dialog.say(
+      lock.clues.map(k => `${CLUES[k].from}：「${CLUES[k].note.replace(/^.*?说/, '')}」`)
+        .concat(['三个人里只有一个说了真话。\n口令是几？']),
+      () => {
+        this.dialog.choice('口令是……', R.candidates.map(v => `${v}`).concat('再想想'), i => {
+          if (i >= R.candidates.length) return;
+          if (R.candidates[i] === R.answer) {
+            GS.locks.push(n); saveGame();
+            this.dialog.say(['咔哒——箱子开了！', `想对了：\n${R.explain}`], () => this.openChest(key, n));
+          } else {
+            this.dialog.say([`如果是 ${R.candidates[i]}，\n数数看会有几个人说真话？`,
+                             '不对哦，再想想。\n（不会有惩罚的）'], () => this.lockRiddle(key, n, lock));
+          }
+        });
+      });
   }
 
   // 口令锁：三个数字轮盘，答案在三个 NPC 嘴里
@@ -2202,12 +2390,11 @@ class Clear extends Phaser.Scene {
         { fontSize: '17px', fontFamily: FONT, color: '#ffb347', align: 'center', lineSpacing: 6 }).setOrigin(0.5);
     }
 
-    makeButton(this, W / 2, 660, 300, 64, '↩️ 回本章继续探索', () => this.scene.start('World'), { fontSize: '20px' });
-    if (hasNext) {
-      makeButton(this, W / 2, 745, 300, 64, `➡️ 前往第 ${GS.chapter + 2} 章`, () => this.nextChapter(), { fontSize: '20px', color: 0x3a6b45 });
-    } else {
-      this.add.text(W / 2, 750, '（下一章敬请期待）', { fontSize: '17px', fontFamily: FONT, color: '#667' }).setOrigin(0.5);
-    }
+    this.add.text(W / 2, 655, hasNext
+      ? '水晶浮了起来，慢慢转向北方。\n回村里问问长老吧。'
+      : '（下一章敬请期待）',
+      { fontSize: '18px', fontFamily: FONT, color: '#ffb347', align: 'center', lineSpacing: 8 }).setOrigin(0.5);
+    makeButton(this, W / 2, 740, 300, 64, '↩️ 回到村庄', () => this.scene.start('World'), { fontSize: '20px' });
   }
 
   // 进入下一章：本章进度归零，人物等级/装备/日记全部带走

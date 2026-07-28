@@ -689,8 +689,20 @@ class World extends Phaser.Scene {
         this.cameras.main.flash(300, 255, 255, 255);
         this.dialog.say(['【归乡术】！\n一阵白光，你回到了村庄。']);
       } else if (key === 'seek') {
-        const alive = this.mobs.filter(m => !m.dead).length;
-        this.dialog.say([`【探宝术】！\n这张地图上还有 ${alive} 只怪物没有唤醒。\n（宝箱与碎片将在完整版中开放）`]);
+        const chestLeft = CHESTS.length - GS.chests.length;
+        const fragLeft = FRAGMENTS.length - GS.frags.length;
+        const hidLeft = Object.keys(this.hidden).filter(k => !k.endsWith('_spr')).length;
+        const hasLens = GS.tools.includes('lens');
+        const lines = ['【探宝术】！\n一阵微光扫过沙漠……'];
+        lines.push(`还没开的宝箱：${chestLeft} 个\n还没找到的碎片：${fragLeft} 页`);
+        if (hidLeft > 0) {
+          lines.push(hasLens
+            ? `沙子下面还埋着 ${hidLeft} 处东西。\n拿着放大镜走过去，会发光。`
+            : `沙子下面还埋着 ${hidLeft} 处东西，\n可是你还没有能看见它们的宝物。\n（打败沙漠尽头的 Boss 就有了）`);
+        } else if (fragLeft === 0 && chestLeft === 0) {
+          lines.push('这张地图上的东西，\n你已经全部找到了。');
+        }
+        this.dialog.say(lines);
       } else if (key === 'repel') {
         this.repelSteps = 200;
         this.dialog.say(['【避敌术】！\n接下来 200 步，小怪不会靠近你。']);
@@ -820,10 +832,15 @@ class World extends Phaser.Scene {
            '那个上锁的箱子啊，我家老头子当年也开过。', c.ask,
            '哎，人老了记性差，你自己算算。']
         : ['第二个数，二的四倍。别记错了。'],
-      '9': first
-        ? ['（一个风尘仆仆的旅人坐在石头上。）',
-           '我走遍了这片沙漠。', c.ask, '你要是拿到了放大镜，记得回来找找。']
-        : ['沙子颜色不一样的地方，用放大镜看。'],
+      '9': GS.tools.includes('lens')
+        ? ['你拿到那件宝物了！',
+           '那就去吧——沙子会告诉你的。',
+           '（旅人指了指沙漠深处。）']
+        : first
+          ? ['（一个风尘仆仆的旅人坐在石头上。）',
+             '我走遍了这片沙漠。', c.ask,
+             '现在去找也是白费力气。\n先去打败沙漠尽头那家伙吧。']
+          : ['先拿到那件能放大的宝物。\n在那之前，沙子什么也不会告诉你。'],
     }[id];
     this.dialog.say(lines, () => { if (first) this.addClue(npc.clue); }, npc.name);
   }

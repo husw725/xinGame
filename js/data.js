@@ -191,8 +191,8 @@ const CLUES = {
             answer:8,  note:'口令第2个数 = 二的四倍' },
   code3:  { lock:'chest3', from:'朵朵',       ask:'谢谢你！第三个数是——五五二十五里的那个五！',
             answer:5,  note:'口令第3个数 = 五五二十五里的五' },
-  bridge: { lock:'lore',   from:'沙漠旅人',   ask:'沙子里有几处颜色不一样。没有放大镜是看不出来的。',
-            answer:null, note:'沙漠里有隐藏处，需要放大镜' },
+  bridge: { lock:'lore',   from:'沙漠旅人',   ask:'沙子里藏了东西，但现在你看不到。\n要先有一件能放大的宝物。',
+            answer:null, note:'沙漠藏有东西（先拿到放大镜再回来）' },
 };
 
 // ================= 宝箱锁 =================

@@ -470,9 +470,10 @@ class World extends Phaser.Scene {
     if (this.indoor) {
       this.cameras.main.removeBounds();
       this.cameras.main.centerOn(this.gw * TILE / 2, this.gh * TILE / 2 - 40);
-      this.add.text(W / 2, 60, this.houseName, { fontSize: '26px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' })
+      // 标题放到 HUD 下面（HUD 占 y8~64），不然会叠在一起
+      this.add.text(W / 2, 120, this.houseName, { fontSize: '26px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' })
         .setOrigin(0.5).setScrollFactor(0).setDepth(100);
-      this.add.text(W / 2, 96, '面朝柜子按 A 就能翻一翻　·　走到门口出去',
+      this.add.text(W / 2, 156, '面朝柜子按 A 翻一翻　·　走到门口出去',
         { fontSize: '15px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
     } else {
       this.cameras.main.setBounds(0, 0, MAPW * TILE, MAPH * TILE);

@@ -13,6 +13,18 @@ cp "$SRC"/js/*.js "$DEST/js/"
 
 cd "$DEST"
 
+# 打版本戳：浏览器会缓存 js，不加这个的话玩家可能一直跑旧版本
+STAMP=$(date +%Y%m%d%H%M%S)
+python3 - "$STAMP" <<'PYEOF'
+import re, sys, pathlib
+stamp = sys.argv[1]
+p = pathlib.Path('index.html')
+s = p.read_text()
+s = re.sub(r'(src="js/(?:data|art|game)\.js)(\?v=[^"]*)?"', r'\1?v=' + stamp + '"', s)
+p.write_text(s)
+PYEOF
+echo "版本戳 $STAMP"
+
 # 发布前必须过校验：这两处错了会卡死玩家
 echo "--- 数值平衡校验 ---"
 node balance_sim.js  > /dev/null || { echo "✗ balance_sim.js 未通过，已中止发布"; exit 1; }

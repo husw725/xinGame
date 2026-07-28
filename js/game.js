@@ -21,6 +21,7 @@ function defaultState() {
       bag: [], // 备用装备
     },
     chapter: 0,
+    gm: false,      // GM模式：A B A B ▲ ▼ 触发，攻击秒怪+不死，用来快速过流程
     indoor: null,   // 在哪间屋里（门坐标），null=在外面
     outPos: null,   // 进屋前站在哪
     flags: { intro: false, boss: false, puzzle: false },
@@ -563,6 +564,7 @@ class World extends Phaser.Scene {
       this.add.text(x, y, ch, { fontSize: '22px', color: '#fff' }).setOrigin(0.5).setScrollFactor(0).setDepth(90).setAlpha(0.7);
       // ponytail: queued 让"轻点一下"也能走一格 —— pointerup 会在 update() 读到 held 之前就清空它
       r.on('pointerdown', () => {
+        if (d === 'up') this.gmPush('U'); else if (d === 'down') this.gmPush('D');
         // 对话选项开着时，上下键改成移动光标
         if (this.dialog.hasChoices()) {
           if (d === 'up') this.dialog.moveSel(-1);
@@ -577,6 +579,22 @@ class World extends Phaser.Scene {
     this.input.on('pointerup', () => { this.held = null; });
   }
 
+  // 秘技序列 A B A B ▲ ▼ → GM 模式
+  gmPush(k) {
+    this.gmBuf = ((this.gmBuf || '') + k).slice(-6);
+    if (this.gmBuf !== 'ABABUD') return;
+    this.gmBuf = '';
+    GS.gm = !GS.gm;
+    saveGame();
+    this.updateHUD();
+    const t = this.add.text(W / 2, 300, GS.gm ? '⚡ GM 模式 开启\n攻击秒怪 · 不会死' : 'GM 模式 关闭', {
+      fontSize: '30px', fontFamily: FONT, color: GS.gm ? '#7fe08a' : '#ff9a9a',
+      fontStyle: 'bold', align: 'center', stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(400);
+    this.cameras.main.flash(200, 255, 255, 180);
+    this.tweens.add({ targets: t, y: 250, alpha: 0, duration: 2200, onComplete: () => t.destroy() });
+  }
+
   // A = 确认 / 对话 / 打开菜单；B = 取消 / 返回 / 关闭
   makeAB() {
     const A = makeButton(this, 392, 690, 80, 80, 'A', () => this.pressA(), { fontSize: '30px', color: 0x3a6b45 });
@@ -584,9 +602,12 @@ class World extends Phaser.Scene {
     [A, B].forEach(b => { b.bg.setScrollFactor(0).setDepth(90); b.txt.setScrollFactor(0).setDepth(91); });
     this.input.keyboard.on('keydown-Z', () => this.pressA());
     this.input.keyboard.on('keydown-X', () => this.pressB());
+    this.input.keyboard.on('keydown-UP', () => this.gmPush('U'));
+    this.input.keyboard.on('keydown-DOWN', () => this.gmPush('D'));
   }
 
   pressA() {
+    this.gmPush('A');
     if (this.inBattle) return;
     if (this.dialog.hasChoices()) { this.dialog.confirmSel(); return; }
     if (this.dialog.open) { this.dialog.lastTap = 0; this.dialog.tap(); return; }
@@ -595,6 +616,7 @@ class World extends Phaser.Scene {
   }
 
   pressB() {
+    this.gmPush('B');
     if (this.inBattle) return;
     if (this.dialog.hasChoices()) { this.dialog.cancelSel(); return; }
     if (this.dialog.open) { this.dialog.skip(); return; }
@@ -654,7 +676,7 @@ class World extends Phaser.Scene {
 
   updateHUD() {
     const p = GS.p;
-    this.hudText.setText(`勇者 Lv${p.lv}   💰${p.gold}\nHP ${p.hp}/${p.maxhp}  MP ${p.mp}/${p.maxmp}`);
+    this.hudText.setText(`勇者 Lv${p.lv}   💰${p.gold}${GS.gm ? '   ⚡GM' : ''}\nHP ${p.hp}/${p.maxhp}  MP ${p.mp}/${p.maxmp}`);
   }
 
   update() {
@@ -1747,7 +1769,7 @@ class Battle extends Phaser.Scene {
 
   updateBars() {
     const p = GS.p;
-    this.pName.setText(`勇者 Lv${p.lv}\n⚔️${totalAtk()} 🛡️${totalDef()} 🧠${totalInt()}`);
+    this.pName.setText(`勇者 Lv${p.lv}${GS.gm ? ' ⚡GM' : ''}\n⚔️${totalAtk()} 🛡️${totalDef()} 🧠${totalInt()}`);
     this.hpBar.setScale(200 * Math.max(0, p.hp / p.maxhp), 10);
     this.mpBar.setScale(200 * Math.max(0, p.mp / p.maxmp), 10);
     this.ehpBar.setScale(300 * Math.max(0, this.enemy.hp / this.enemy.maxhp), 14);
@@ -1905,7 +1927,8 @@ class Battle extends Phaser.Scene {
     // 不加这条，孩子可以低等级靠连放魔法直接秒Boss，练级就没意义了
     const decay = Math.max(0.35, 1 - 0.2 * this.spellCasts);
     this.spellCasts++;
-    const dmg = Math.max(1, Math.round(base * mult * decay));
+    let dmg = Math.max(1, Math.round(base * mult * decay));
+    if (GS.gm) dmg = Math.max(dmg, this.enemy.hp);   // GM：魔法也秒
     this.enemy.hp -= dmg;                       // 无视防御
     this.enemySprite.setTint(0xffaa55);
     this.tweens.add({ targets: this.enemySprite, x: '+=12', duration: 50, yoyo: true, repeat: 3,
@@ -2066,6 +2089,7 @@ class Battle extends Phaser.Scene {
       if (this.focused) { dmg *= 2; this.focused = false; }
       dmg = Math.round(dmg * tier.mult);          // 答得快，打得重
       if (perfect) dmg *= 2;
+      if (GS.gm) dmg = Math.max(dmg, this.enemy.hp);   // GM：答对即秒杀
       this.enemy.hp -= dmg;
 
       if (this.isRevenge && this.poolIdx !== undefined) { GS.pool.splice(this.poolIdx, 1); this.poolIdx = undefined; }
@@ -2125,6 +2149,11 @@ class Battle extends Phaser.Scene {
       return;
     }
 
+    if (GS.gm) {                                  // GM：不死，方便一口气过流程
+      this.showFloat('GM 免伤', '#7fe08a', W / 2, 400);
+      this.time.delayedCall(400, () => this.showMenu());
+      return;
+    }
     GS.p.hp -= dmg;
     this.tweens.add({ targets: this.enemySprite, y: '+=40', duration: 120, yoyo: true });
     this.cameras.main.shake(200, 0.012);

@@ -10,28 +10,31 @@ function makeCtx() {
   const noop = () => {};
 
   // 会记录属性的假 GameObject：链式调用全部返回自己
+  const created = [];
   function obj(extra = {}) {
     const o = {
       x: 0, y: 0, alpha: 1, visible: true, active: true, scene: {}, text: '',
       style: { fontSize: '22px', color: '#fff' }, height: 20, width: 100,
       fillColor: 0, displayWidth: 0,
-      setText(t) { this.text = String(t); return this; },
-      setOrigin() { return this; }, setScale() { return this; }, setDepth() { return this; },
+      setText(t) { this._chk(); this.text = String(t); return this; },
+      setOrigin() { return this; }, setScale() { this._chk(); return this; }, setDepth() { return this; },
       setScrollFactor() { return this; }, setStrokeStyle() { return this; },
-      setFillStyle(c) { this.fillColor = c; return this; }, setTint() { return this; },
-      clearTint() { return this; }, setVisible(v) { this.visible = v; return this; },
+      setFillStyle(c) { this.fillColor = c; return this; }, setTint() { this._chk(); return this; },
+      clearTint() { return this; }, setVisible(v) { this._chk(); this.visible = v; return this; },
       setInteractive() { return this; }, setColor(c) { this.style.color = c; return this; },
       setFontSize(s) { this.style.fontSize = s + 'px'; return this; },
       setStyle(s) { Object.assign(this.style, s); return this; },
       setPosition() { return this; }, setFlipX() { return this; }, setDisplaySize() { return this; },
       setAlpha(a) { this.alpha = a; return this; },
-      destroy() { this.active = false; this.scene = null; },
+      destroy() { this.active = false; this.scene = null; this._dead = true; },
+      _chk() { if (this._dead) throw new Error('操作了已销毁的对象（场景复用残留）'); },
       on(ev, fn) { (this._h = this._h || {})[ev] = fn; return this; },
       once() { return this; },
       emit(ev, ...a) { if (this._h && this._h[ev]) this._h[ev](...a); return this; },
       listenerCount() { return 1; },
       ...extra,
     };
+    created.push(o);
     return o;
   }
 
@@ -95,6 +98,9 @@ function makeCtx() {
   ctx.__advance = ms => { now += ms; };
   // class / const 是词法声明，不在 globalThis 上，得用 runInContext 取出来
   ctx.__get = expr => vm.runInContext(expr, ctx);
+  // 模拟 Phaser shutdown：销毁本场所有显示对象。
+  // 这样"实例被复用但字段还指着死对象"的 bug 才会暴露出来
+  ctx.__shutdown = () => { created.forEach(o => o.destroy && o.destroy()); created.length = 0; };
   return ctx;
 }
 
@@ -103,7 +109,10 @@ function fight(ctx, enemyKey, { answerRight = true, gm = false, wrongFirst = fal
   let asked = 0;
   const Battle = ctx.__get('Battle'), ENEMIES = ctx.__get('ENEMIES');
   ctx.GS.gm = gm;
-  const b = new Battle();
+  // Phaser 复用同一个场景实例：第二场是在同一个对象上重跑 create()
+  if (!ctx.__battle) ctx.__battle = new Battle();
+  else ctx.__shutdown();
+  const b = ctx.__battle;
   b.init({ def: ENEMIES[enemyKey], mid: 0 });
   b.create();
   ctx.__flush(1000);

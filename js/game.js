@@ -1760,6 +1760,10 @@ class Battle extends Phaser.Scene {
     this.timerBar = this.add.image(20, 556, 'px').setOrigin(0, 0.5).setScale(440, 8).setTint(0xffb347).setVisible(false);
 
     this.buttons = [];
+    // Phaser 复用 Battle 实例，这三个是懒创建的，不清掉的话第二场会拿到已销毁的对象，
+    // 一按攻击就抛异常、画面停在"要怎么做？"
+    this.speedBar = null; this.speedBg = null; this.speedTxt = null;
+    this.qAskedAt = null;
     // 战斗界面不放 A/B：本来就是四个大按钮直接点，A/B 会压住消息框
     this.input.keyboard.on('keydown-Z', () => { if (this.state === 'msg') { this.lastTap = 0; this.tapMsg(); } });
     this.input.keyboard.on('keydown-SPACE', () => this.tapMsg());

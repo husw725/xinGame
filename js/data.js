@@ -80,6 +80,12 @@ const ENEMIES = {
   imp2:   { key:'imp2',   name:'余数小鬼',   tex:'imp',    hp:112,def:9, atk:19, exp:70, gold:18, qtype:'remainder' },
   owl:    { key:'owl',    name:'量词猫头鹰', tex:'owl',    hp:100,def:8, atk:17, exp:62, gold:16, qtype:'liangci' },
   boss2:  { key:'boss2',  name:'分糖巨人',   tex:'boss2',  hp:320,def:19,atk:28, exp:900,gold:420,qtype:'divide', boss:true },
+  // --- 第三章（数值取自 curve_sim：达标 Lv16 时 我攻49/我防17/我HP150）---
+  // 小怪 4 刀砍死、挨 15 下才倒，和前两章手感一致
+  cog:    { key:'cog',    name:'齿轮蜘蛛',   tex:'cog',    hp:150,def:12,atk:26, exp:98, gold:24, qtype:'timeunit' },
+  bell:   { key:'bell',   name:'走时铜铃',   tex:'bell',   hp:158,def:13,atk:27, exp:104,gold:26, qtype:'timeafter' },
+  sand:   { key:'sand',   name:'沙漏懒虫',   tex:'sandw',  hp:146,def:11,atk:28, exp:100,gold:25, qtype:'timespan' },
+  boss3:  { key:'boss3',  name:'时针幽灵',   tex:'boss3',  hp:320,def:34,atk:40, exp:1900,gold:760,qtype:'mixed3', boss:true },
 };
 
 // ================= 装备（DQ 逻辑：五部位，卖价 75%） =================
@@ -117,6 +123,13 @@ const GEAR = {
   abacus_s: { slot:'shield', name:'算盘盾',   def:5,  buy:260, desc:'珠子噼啪响，挡得住' },
   divider:  { slot:'charm',  name:'分糖锦囊', int:6,  buy:240, desc:'答对回2点MP，智力+6', mpBonus:2 },
   hookband: { slot:'charm',  name:'钩爪腕带', int:4,  buy:0,   desc:'金币+35%，智力+4', goldBonus:0.35, treasure:true },
+  // --- 第三章新增（Lv16 前后买得起）---
+  clock_sw: { slot:'weapon', name:'钟摆锤',   atk:11, buy:420, desc:'一下一下，砸得很稳' },
+  gear_h:   { slot:'head',   name:'齿轮盔',   def:7,  buy:380, desc:'转起来会咔咔响' },
+  glass_s:  { slot:'shield', name:'钟面盾',   def:8,  buy:460, desc:'表盘做的盾，看得见时间' },
+  swift_b:  { slot:'boots',  name:'秒针靴',   spd:8,  buy:400, desc:'走得比秒针还快' },
+  hourgl:   { slot:'charm',  name:'沙漏护符', int:9,  buy:520, desc:'限时题时间+50%，智力+9', slowQ:0.5 },
+  pocketw:  { slot:'charm',  name:'时之怀表', int:14, buy:0,   desc:'答题倒计时+1秒，智力+14', bonusMs:1000, treasure:true },
 };
 
 // 第1章商店卖什么（宝箱专属的不卖）
@@ -501,6 +514,53 @@ function divideQ() {
            tip: `想口诀：${CN[m]}${CN[M]}${a < 10 ? '得' + CN[a] : numCN(a)}，所以 ${a}÷${b}=${q}` };
 }
 
+// ---- 第3章：时、分、秒（人教版三上）----
+const hhmm = m => Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0');
+// 时刻型选项：干扰项都是"孩子真会犯的错"——差 10 分、多算一小时、时分弄反
+function timeOptions(mins) {
+  const set = new Set([hhmm(mins)]);
+  const cands = shuffle([mins + 10, mins - 10, mins + 60, mins - 60, mins + 5, mins - 5, mins + 30]);
+  for (const v of cands) { if (set.size >= 4) break; if (v > 0 && v < 24 * 60) set.add(hhmm(v)); }
+  return shuffle([...set]);
+}
+
+function timeUnitQ() {
+  const kind = irnd(0, 3);
+  if (kind === 0) { const h = irnd(2, 9); return { text: `${h} 时 = ? 分`, options: numOptions(h * 60), answer: String(h * 60), tip: `1 时 = 60 分，所以 ${h} 时 = 60×${h} = ${h * 60} 分` }; }
+  if (kind === 1) { const m = irnd(2, 9); return { text: `${m} 分 = ? 秒`, options: numOptions(m * 60), answer: String(m * 60), tip: `1 分 = 60 秒，所以 ${m} 分 = 60×${m} = ${m * 60} 秒` }; }
+  if (kind === 2) { const m = irnd(2, 9); return { text: `${m * 60} 秒 = ? 分`, options: numOptions(m), answer: String(m), tip: `60 秒是 1 分，${m * 60} 里有 ${m} 个 60，所以是 ${m} 分` }; }
+  const h = irnd(2, 6); return { text: `${h * 60} 分 = ? 时`, options: numOptions(h), answer: String(h), tip: `60 分是 1 时，${h * 60} 里有 ${h} 个 60，所以是 ${h} 时` };
+}
+
+// 现在几点，再过多久是几点（会跨小时，这正是要练的地方）
+function timeAfterQ() {
+  const start = irnd(6, 20) * 60 + irnd(0, 11) * 5;
+  const add = [15, 20, 25, 30, 40, 45, 50][irnd(0, 6)];
+  const end = start + add;
+  const carry = Math.floor(end / 60) > Math.floor(start / 60);
+  return {
+    text: `现在 ${hhmm(start)}，\n再过 ${add} 分钟是几点？`,
+    options: timeOptions(end), answer: hhmm(end),
+    tip: carry
+      ? `${start % 60} 分 + ${add} 分 = ${start % 60 + add} 分，超过 60 了，\n进 1 时：${hhmm(end)}`
+      : `分针从 ${start % 60} 走到 ${start % 60 + add}，时针没过整点，\n所以是 ${hhmm(end)}`,
+  };
+}
+
+// 两个时刻之间过了多少分钟
+function timeSpanQ() {
+  const start = irnd(6, 19) * 60 + irnd(0, 11) * 5;
+  const span = [15, 20, 25, 35, 40, 45, 50, 55][irnd(0, 7)];
+  const end = start + span;
+  return {
+    text: `${hhmm(start)} 出发，${hhmm(end)} 到，\n一共用了多少分钟？`,
+    options: numOptions(span), answer: String(span),
+    tip: Math.floor(end / 60) > Math.floor(start / 60)
+      ? `先走到整点 ${Math.floor(end / 60)}:00 用了 ${60 - start % 60} 分，\n再走 ${end % 60} 分，一共 ${span} 分`
+      : `同一个小时里，${end % 60} − ${start % 60} = ${span} 分`,
+  };
+}
+
 function remainderQ() {
   const b = irnd(3, 9);
   const q = irnd(2, 8);
@@ -521,6 +581,10 @@ function getQuestion(type) {
   if (type === 'divide')    return divideQ();
   if (type === 'remainder') return remainderQ();
   if (type === 'liangci')   return liangciQ();
+  if (type === 'timeunit')  return timeUnitQ();
+  if (type === 'timeafter') return timeAfterQ();
+  if (type === 'timespan')  return timeSpanQ();
+  if (type === 'mixed3')    return [timeUnitQ, timeAfterQ, timeSpanQ][irnd(0, 2)]();
   if (type === 'mixed2')    return [divideQ, remainderQ, liangciQ][irnd(0, 2)]();
   if (type === 'mixed') type = ['mult', 'addsub', 'chinese'][irnd(0, 2)];
   if (type === 'mult') return multQ();
@@ -596,6 +660,65 @@ function _ch2map() {
   return g.map(r => r.join(''));
 }
 const CH2_MAP = _ch2map();
+
+// ---- 第3章：时光钟楼 ----
+// 拓扑刻意和前两章分开：第1章直廊、第2章环廊，这里是"竖着爬的塔"。
+// 每层一间横厅，楼梯左右交替 —— 走法是 Z 字形，逼着你把每层走完才能上楼。
+function _ch3map() {
+  const W = 25, H = 62, g = Array.from({ length: H }, () => Array(W).fill('W'));
+  const put = (x, y, c) => { if (y >= 0 && y < H && x >= 0 && x < W) g[y][x] = c; };
+  const fill = (x1, y1, x2, y2, c) => { for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) put(x, y, c); };
+
+  // --- 塔底的钟表匠小镇（0~12）---
+  fill(1, 1, 23, 12, 'g');
+  fill(2, 2, 5, 4, 'r'); fill(2, 3, 5, 4, 'w'); put(3, 4, 'd');        // 钟表铺
+  fill(18, 2, 21, 4, 'r'); fill(18, 3, 21, 4, 'w'); put(20, 4, 'd');   // 杂货铺
+  fill(2, 7, 5, 9, 'r'); fill(2, 8, 5, 9, 'w'); put(3, 9, 'd');        // 学堂
+  put(7, 6, '4'); put(16, 6, '5'); put(9, 10, '6'); put(19, 9, '7'); put(6, 11, '8');
+  put(13, 6, 'E'); put(17, 11, 'H'); put(21, 7, 'J');                   // 开场说明拆给这三位
+  put(8, 3, 'K');                                                        // 换物链：拾荒的小子
+  put(15, 3, 'L');                                                       // 跨章委托：大钟守夜人
+  put(11, 12, 'O');                                                     // 传送圆盘
+  fill(12, 13, 13, 15, 'g');                                            // 进塔的门洞
+
+  // --- 塔身：6 层横厅，楼梯左右交替（Z 字形爬）---
+  // 每层厅高 3 格（top..top+2），层间隔 4 格楼板，楼梯 'v' 竖着打通
+  // 楼梯左右交替 = 每层都得横穿一遍才上得去，路线自然变长，不用靠迷宫绕
+  for (let i = 0; i < 6; i++) {
+    const top = 17 + i * 7;
+    fill(3, top, 21, top + 2, 'g');
+    if (i < 5) {
+      const sx = i % 2 === 0 ? 20 : 4;      // 一层右、二层左、三层右……
+      fill(sx, top + 3, sx, top + 6, 'v');  // 层间隔 4 格，得整段打通
+    }
+  }
+  fill(12, 16, 13, 16, 'g');                // 进塔口接到一层
+
+  // --- 六层 → 顶层：一段竖楼梯，底下卡着钟门 ---
+  const topY = 59;
+  fill(12, 55, 12, 58, 'v');
+  put(12, 55, 'G');                          // 钟门：拨对时间才开
+
+  // --- 顶层钟面厅（魔王）---
+  fill(3, topY, 21, topY + 2, 'g');
+  put(12, topY, 'X'); put(12, topY + 1, 'B');   // 水晶在上、时针幽灵在下
+
+  // --- 内容分布 ---
+  put(5,  18, 'c');  put(19, 19, 'p');      // 一层：宝箱 + 碎片
+  put(4,  25, 'h');  put(20, 26, 'c');      // 二层
+  put(6,  32, 'p');  put(18, 33, 'h');      // 三层
+  put(5,  39, 'c');  put(20, 40, 'h');      // 四层
+  put(7,  46, 'p');  put(19, 47, 'h');      // 五层
+  put(12, 53, 'D');                          // 六层：钟面机关入口
+  put(6,  54, 'G');                          // 六层：通顶层的钟门（解开机关才开）
+  put(16, 53, '9');                          // 六层：迷路的报时人
+
+  return g.map(r => r.join(''));
+}
+const CH3_MAP = _ch3map();
+
+const CH3_START   = { x:12, y:11 };
+const CH3_REVENGE = { x:12, y:14 };
 
 const CH2_START   = { x:12, y:11 };
 const CH2_REVENGE = { x:12, y:15 };
@@ -742,6 +865,143 @@ const CH2_CANDY = [
     reward:{ kind:'frag', idx:3 } },
 ];
 
+// ================= 第三章数据 =================
+const CH3_SPAWNS = [
+  { k:'cog',  x:8,  y:18 }, { k:'bell', x:16, y:19 },      // 一层
+  { k:'sand', x:9,  y:25 }, { k:'cog',  x:17, y:26 },      // 二层
+  { k:'bell', x:10, y:32 }, { k:'sand', x:16, y:33 },      // 三层
+  { k:'cog',  x:8,  y:39 }, { k:'bell', x:18, y:40 },      // 四层
+  { k:'sand', x:11, y:46 }, { k:'cog',  x:17, y:47 },      // 五层
+  { k:'bell', x:9,  y:53 }, { k:'sand', x:20, y:54 },      // 六层
+];
+
+// 日记第 17–24 页：他开始"追不上"——为第6章的身份揭示继续铺垫，仍不点名
+const CH3_FRAGS = [
+  { where:'一层',     text:'第十七页：\n「先生说，会看钟的孩子\n才管得住自己。」' },
+  { where:'三层',     text:'第十八页：\n「我把闹钟拨早了半小时。\n还是最后一个到。」' },
+  { where:'五层',     text:'第十九页：\n「他们跑得快。\n我数着自己的脚步，\n一二一二。」' },
+  { where:'钟面第一间', text:'第二十页：\n「今天迟到了。\n先生没说我，只看了看钟。」' },
+  { where:'宝箱里',   text:'第二十一页：\n「我想把钟拨慢。\n那样是不是就来得及了。」' },
+  { where:'隐藏处',   text:'第二十二页：\n「拨慢了也没用。\n天还是黑了。」' },
+  { where:'隐藏处',   text:'第二十三页：\n「我在钟楼下面坐到很晚。\n没人来找。」' },
+  { where:'隐藏处',   text:'第二十四页：\n「时间不等我。\n谁也不等我。」' },
+];
+
+const CH3_NPCS = {
+  '1': { name:'守钟人',    tex:'npc_elder',    role:'elder' },
+  '2': { name:'商人',      tex:'npc_merchant', role:'shop' },
+  '3': { name:'老师',      tex:'npc_teacher',  role:'teacher' },
+  // 线索机制：三张作息表拼出钟门要拨的时刻（不是凑数字，也不是真假话）
+  '4': { name:'钟表匠',    tex:'npc_smith',    role:'clue', clue:'c3a' },
+  '5': { name:'送奶的婶婶',tex:'npc_aunt',     role:'clue', clue:'c3b' },
+  '9': { name:'迷路的报时人',tex:'npc_traveler',role:'clue', clue:'c3c' },
+  '6': { name:'滴答',      tex:'npc_girl',     role:'quest' },
+  '7': { name:'修钟的老人',tex:'npc_grandpa',  role:'lore' },
+  '8': { name:'小铃',      tex:'npc_boy',      role:'chat' },
+  'E': { name:'塔下的更夫', tex:'npc_guard', role:'info',
+    lines: ['这塔有六层，楼梯一层左一层右。',
+            '想上去，每层都得横着走一遍。',
+            '塔顶的大钟停了。\n停在几点，没人说得准。'],
+    lines2: ['大钟又开始走了。\n我听见它响了。'] },
+  'H': { name:'背书包的男孩', tex:'npc_kid', role:'info',
+    lines: ['这儿的怪物都跟时间有关。',
+            '有的问你 1 时等于几分，\n有的问你再过一会儿几点了。',
+            '我总算错跨小时的那种。\n满 60 分要进 1 时，我老忘。'],
+    lines2: ['我现在会算跨小时的了！'] },
+  'J': { name:'圆盘旁的奶奶', tex:'npc_granny', role:'info',
+    lines: ['圆盘你已经会用啦。',
+            '前两章要是还有纸片没捡完，\n随时踩上去回去。'],
+    lines2: ['三个地方都能去了。\n想去哪儿踩一下就行。'] },
+  // 换物链的第三环：给钢丝的人
+  'K': { name:'拾荒的小子', tex:'npc_carpenter', role:'trade' },
+  // 跨章委托：三样零件散在第1、2、3章，得踩传送阵回去拿
+  'L': { name:'大钟守夜人', tex:'npc_guard2', role:'errand' },
+};
+
+// 线索：三张作息表，拼出钟门要拨到的时刻（时来自一张，分来自另一张，第三张校验）
+const CH3_CLUES = {
+  c3a: { lock:'clock', from:'钟表匠',     ask:'大钟停的那一刻，\n时针正指着下午的第 4 个整点。\n（也就是 16 时）',
+         note:'钟表匠说：时针指 16 时' },
+  c3b: { lock:'clock', from:'送奶的婶婶', ask:'我送完最后一家是 15:40，\n那时钟还在走。\n它是在那之后 5 分钟停的。',
+         note:'送奶婶婶说：15:40 之后 5 分钟停的 → 15:45' },
+  c3c: { lock:'clock', from:'迷路的报时人',ask:'我记着的是"三点三刻"。\n一刻是 15 分，三刻就是 45 分。',
+         note:'报时人说：三点三刻 = 3:45（下午就是 15:45）' },
+  c3d: { lock:'lore',  from:'修钟的老人',  ask:'齿轮缝里塞着东西。\n手指抠不出来，得有细长的家伙。',
+         note:'齿轮缝藏有东西（拿到时之怀表再回来）' },
+};
+
+// 钟门：把指针拨到停摆的那一刻。16时 是钟表匠记错了（他看的是时针"快指到"4）
+// 婶婶和报时人两条独立线索都指向 15:45 —— 二对一，答案就是 15:45
+const CH3_CLOCKLOCK = {
+  answer: { h: 15, m: 45 },
+  candidates: [{ h: 16, m: 0 }, { h: 15, m: 45 }, { h: 3, m: 45 }],
+  explain: '婶婶说 15:40 之后 5 分钟 → 15:45。\n' +
+           '报时人说"三点三刻" → 3:45，下午就是 15:45。\n' +
+           '两个人对得上，所以是 15:45。\n' +
+           '钟表匠看的是时针快指到 4，其实还没到整点。',
+};
+
+const CH3_LOCKS = [
+  { kind:'calc',     icon:'🔢', hint:'箱盖上刻着一道时间换算题' },
+  { kind:'schedule', icon:'🕐', hint:'箱盖上是一张作息表，\n缺了一格时间。' },
+  { kind:'clock',    icon:'⏰', hint:'箱盖上是个小钟面。\n镇上三个人各记着一个时刻，\n问齐了再来。', clues:['c3a','c3b','c3c'] },
+];
+
+const CH3_CHESTS = [
+  { kind:'gear', key:'glass_s', msg:'找到了【钟面盾】！' },
+  { kind:'frag', idx:4,         msg:'箱子里是一页发黄的纸……' },
+  { kind:'gear', key:'pocketw', msg:'找到了传说中的【时之怀表】！\n（商店买不到，答题倒计时+1秒）' },
+];
+
+const CH3_HOUSES = {
+  '3,4':  { name:'钟表铺', owner:'1', rows:[
+    "WWWWWWWWW",
+    "WuFuFuFuW",
+    "WFFFFFFFW",
+    "WtFFNFFtW",
+    "WFFFFFFFW",
+    "WuFFFFFuW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '20,4': { name:'杂货铺', owner:'2', rows:[
+    "WWWWWWWWW",
+    "WuuFFFuuW",
+    "WFFFFFFFW",
+    "WFFFNFFFW",
+    "WtFFFFFtW",
+    "WFFFFFFFW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '3,9':  { name:'钟楼学堂', owner:'3', rows:[
+    "WWWWWWWWW",
+    "WFtttttFW",
+    "WFFFFFFFW",
+    "WFFFNFFFW",
+    "WFtttttFW",
+    "WuFFFFFuW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+};
+
+const CH3_SHOP = ['clock_sw','compass','gear_h','glass_s','abacus_s','swift_b','hourgl','divider'];
+
+// ---- 钟面机关（第3章招牌谜题）----
+// 拨时针分针到指定时刻。三间递进：读整点 → 读半点/刻 → 算经过时间后的时刻
+const CH3_CLOCK = [
+  { name:'第一间 · 先认整点', start:{ h:9, m:0 }, target:{ h:12, m:0 },
+    riddle: '石刻：「日出后三小时，门方开」\n（现在钟上是 9:00）',
+    hint: '9 点再过 3 小时就是 12 点。\n按 ＋时 拨三下。',
+    reward:{ kind:'frag', idx:3 } },
+  { name:'第二间 · 半点和刻', start:{ h:7, m:0 }, target:{ h:7, m:45 },
+    riddle: '石刻：「七点三刻」\n（一刻 = 15 分）',
+    hint: '三刻 = 15×3 = 45 分。\n时针留在 7，分针拨到 45。',
+    reward:{ kind:'gold', val:420 } },
+  { name:'第三间 · 会跨小时', start:{ h:10, m:50 }, target:{ h:11, m:35 },
+    riddle: '石刻：「现在十点五十，\n再过四十五分钟」',
+    hint: '50 + 45 = 95 分，超过 60 了。\n进 1 时，剩 35 分 → 11:35。',
+    reward:{ kind:'gear', key:'swift_b' } },
+];
+
 // ============================================================
 // 章节表：game.js 通过 loadChapter() 切换，其余代码无需改动
 // ============================================================
@@ -752,14 +1012,63 @@ const CHAPTERS = [
     chests:CH1_CHESTS, houses:CH1_HOUSES, shop:CH1_SHOP,
     puzzle:{ kind:'sokoban', rooms:CH1_SOKOBAN },
     bossTile:{ x:12, y:55 }, crystalTile:{ x:12, y:54 },
-    hiddenBase:5, hiddenTool:'lens', hiddenToolName:'放大镜' },
+    hiddenBase:5, hiddenTool:'lens', hiddenToolName:'放大镜',
+    // 下面这些原来写死在 game.js 的 if (chapter===0/1) 里，改成数据 —— 加新章不用再动代码
+    dex:['slime','imp','wraith','revenge','boss'],
+    bossTaunt:'哞——想要水晶？\n先把乘法口诀背熟再来吧，小豆丁！',
+    hiddenLocked:'这里的沙子好像有点不一样……\n可是什么也看不出来。',
+    toolHint:'「沙漠里有几处沙子不太一样，\n用放大镜看看，会有发现的。」',
+    gateHint:['一扇巨大的石门，上面刻着乘法口诀。',
+              '门缝里透出光，可是推不开——\n旁边那个石室里好像有机关。'],
+    elderWhere:'南边沙漠里的口诀骆驼王守着记忆水晶。',
+    elderSide:'沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。' },
   { n:2, name:'除法回廊', recLv:11, tool:'hook', toolName:'🪝词语钩爪', boss:'boss2',
     map:CH2_MAP, start:CH2_START, revenge:CH2_REVENGE, spawns:CH2_SPAWNS,
     frags:CH2_FRAGS, npcs:CH2_NPCS, clues:CH2_CLUES, locks:CH2_LOCKS,
     chests:CH2_CHESTS, houses:CH2_HOUSES, shop:CH2_SHOP,
     puzzle:{ kind:'candy', rooms:CH2_CANDY },
     bossTile:{ x:12, y:32 }, crystalTile:{ x:12, y:30 },
-    hiddenBase:5, hiddenTool:'hook', hiddenToolName:'词语钩爪' },
+    hiddenBase:5, hiddenTool:'hook', hiddenToolName:'词语钩爪',
+    dex:['spider','imp2','owl','revenge','boss2'],
+    bossTaunt:'想过去？先证明你会分东西。\n分不匀的人，我不放行。',
+    hiddenLocked:'墙缝里好像卡着什么……\n可是手伸不进去。',
+    toolHint:'「回廊的墙缝里卡着东西。\n用钩爪就够得着了。」',
+    gateHint:['天井的石门上刻满了除号。',
+              '门推不动——\n旁边的石室里好像有机关。'],
+    elderWhere:'回廊尽头的分糖巨人守着第二颗水晶。',
+    elderSide:'四个角上的侧厅别漏了，\n里头有人藏过东西。',
+    // 长老在上一章末尾对本章的铺垫（先给氛围，别给答案）
+    elderTease:['那地方原本热闹。\n直到一个巨人住了进去 ——',
+                '他不抢东西，他"分"东西。\n什么都要分成一样多的几份。',
+                '锅碗、粮食、连门板都拆了平分。\n分不完的零头堆在角落，谁也不敢动。'],
+    travelBeats:['你跟着水晶往北走。', '沙子渐渐变成石板。',
+                 '风声停了，脚步声开始有回音。',
+                 '一圈一圈的石廊立在眼前 ——\n【除法回廊】。'] },
+  { n:3, name:'时光钟楼', recLv:16, tool:'watch', toolName:'⏱️时之怀表', boss:'boss3',
+    map:CH3_MAP, start:CH3_START, revenge:CH3_REVENGE, spawns:CH3_SPAWNS,
+    frags:CH3_FRAGS, npcs:CH3_NPCS, clues:CH3_CLUES, locks:CH3_LOCKS,
+    chests:CH3_CHESTS, houses:CH3_HOUSES, shop:CH3_SHOP,
+    puzzle:{ kind:'clock', rooms:CH3_CLOCK },
+    bossTile:{ x:12, y:60 }, crystalTile:{ x:12, y:59 },
+    hiddenBase:5, hiddenTool:'watch', hiddenToolName:'时之怀表',
+    dex:['cog','bell','sand','revenge','boss3'],
+    dropCog:true,   // 只有钟楼的怪掉齿轮碎片（回第1章强化武器的料）
+    bossTaunt:'嗒、嗒、嗒……\n你也迟到了。\n迟到的人，我不放过去。',
+    hiddenLocked:'齿轮缝里好像塞着什么……\n手指抠不出来。',
+    toolHint:'「塔里的齿轮缝里塞着东西。\n用怀表的链子能勾出来。」',
+    gateHint:['一扇黄铜大门，正中间是个空的表盘。',
+              '门纹丝不动——\n六层的钟室里应该有机关。'],
+    elderWhere:'塔顶的时针幽灵守着第三颗水晶。',
+    elderSide:'每层楼梯一左一右，\n横着走一遍才上得去。\n顺路把东西都捡了。',
+    elderTease:['那是一座钟楼，六层高。',
+                '塔里住进来一个东西，\n它把大钟弄停了。',
+                '钟一停，塔里的人就不知道\n什么时候该做什么了。',
+                '有人守着空盘子等饭，\n有人天亮了还在睡。'],
+    travelBeats:['你顺着水晶指的方向往东走。',
+                 '石板路变成了铺着木板的斜坡。',
+                 '远处传来齿轮转动的声音，\n一下，又一下。',
+                 '一座六层高的塔立在眼前 ——\n【时光钟楼】。',
+                 '塔顶的大钟停着。\n指针不动。'] },
 ];
 
 // 当前章节的数据（game.js 直接用这些名字）
@@ -792,7 +1101,8 @@ loadChapter(0);
 if (typeof module !== 'undefined') {
   module.exports = { ENEMIES, GEAR, SLOTS, SPELLS, spellsAt,
                      TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
-                     CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, fragGlobal, fragText, fragsOfChapter,
+                     CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, CH3_CLOCK, CH3_CLOCKLOCK,
+                     fragGlobal, fragText, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
   // 下面这些会被 loadChapter 整个换掉，所以必须导出成 getter。
   // 直接写进对象字面量的话导出的是加载那一刻的值 —— node 校验脚本里

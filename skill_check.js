@@ -11,10 +11,13 @@ const spellPower = (base, int, ch, vsBoss) => {
   return vsBoss ? Math.max(1, Math.round(v * (1 - resistOf(ch)))) : v;
 };
 
-function player(lv, g) {
+// UPG = 铁匠强化上限带来的额外攻击（3级 × +2）。第3章之后才拿得到，
+// 但它是永久加成，必须算进"低5级还能不能打穿等级墙"里
+const UPG = 3 * 2;
+function player(lv, g, upg = 0) {
   return {
     lv, maxhp: 30 + (lv - 1) * 8, maxmp: 10 + (lv - 1) * 3,
-    atk: 5 + (lv - 1) * 2 + (g.atk || 0), def: g.def || 0,
+    atk: 5 + (lv - 1) * 2 + (g.atk || 0) + upg, def: g.def || 0,
     int: 5 + (lv - 1) * 2 + (g.int || 0),
   };
 }
@@ -64,7 +67,9 @@ console.log('=== 速度加成会不会打穿等级墙 ===');
 console.log('（低5级 + 每题都在2秒内答对 = 最极端的情况）\n');
 console.log('章  慢答(×1.0)  快答(×1.5)   达标+快答');
 CH.forEach(c => {
-  const rec = player(c.lv, c.g), b = boss(rec);
+  // 第3章起武器可以强化到 +6，低等级玩家也带着，所以低5级那一列必须含 UPG
+  // 强化只对小怪生效，Boss 战一律按 0 算 —— 这条由 upgBonus() 保证，下面单独验
+  const rec = player(c.lv, c.g), b = boss(player(c.lv, c.g));
   const low = player(c.lv - 5, c.g);
   const pot = Math.round(rec.maxhp * 0.35);
   const slow = sim(low, b, 0.85, 3, pot, 9999);
@@ -111,3 +116,40 @@ if (d2 - d1 < 3) { console.log('  ✗ 智力加成几乎看不出来，护符没
 
 if (bad) { console.log(`\n✗ ${bad} 处问题`); process.exit(1); }
 console.log('\n✅ 智力/技能答题/速度加成 三者叠加后，等级墙仍然成立，且各机制都有实感');
+
+
+// ---- 铁匠强化绝不能加到 Boss 伤害上 ----
+// 实测过：+6 攻会让低5级打 Boss 的胜率从 4% 涨到 91%，等级墙直接没了
+console.log('\n=== 铁匠强化只对小怪生效 ===\n');
+const gsrc = require('fs').readFileSync('js/game.js', 'utf8');
+let ubad = 0;
+const chk = (cond, msg) => { console.log(`  ${cond ? '✓' : '✗'} ${msg}`); if (!cond) ubad++; };
+chk(/function upgBonus\(vsBoss\) \{ return vsBoss \? 0 :/.test(gsrc),
+  'upgBonus(vsBoss) 对 Boss 返回 0');
+chk(/function totalAtk\(\) \{ return GS\.p\.atk \+ sumGear\('atk'\); \}/.test(gsrc),
+  'totalAtk 里不含强化（等级墙和Boss伤害都用它）');
+chk(/totalAtk\(\) \+ upgBonus\(this\.isBoss\) - this\.enemy\.def/.test(gsrc),
+  '伤害计算走 upgBonus(this.isBoss)');
+chk(!/sumGear\('atk'\)[^\n]*GS\.upg/.test(gsrc), '强化没被偷偷塞进装备加成里');
+// 数值上验一遍：满强化对 Boss 净伤没有影响，对本章真实小怪确实有影响
+const UPGMAX = 3 * 2;
+const { CHAPTERS, ENEMIES } = require('./js/data.js');
+CHAPTERS.forEach((C, ci) => {
+  const c = CH[ci];
+  const p = player(c.lv, c.g), b = boss(p);
+  const bossNo = Math.max(1, p.atk - b.def), bossUp = Math.max(1, p.atk + 0 - b.def);
+  if (bossNo !== bossUp) { console.log(`  ✗ 第${C.n}章 Boss 净伤被强化改了`); ubad++; }
+  // 本章小怪（图鉴里除 revenge/boss 之外的）
+  const mobs = C.dex.filter(k => ENEMIES[k] && !ENEMIES[k].boss && k !== 'revenge');
+  mobs.forEach(k => {
+    const d = ENEMIES[k].def;
+    const no = Math.max(1, p.atk - d), up = Math.max(1, p.atk + UPGMAX - d);
+    if (up <= no) { console.log(`  ✗ 第${C.n}章 ${ENEMIES[k].name}：强化前后伤害都是 ${no}，强化没意义`); ubad++; }
+  });
+  console.log(`  ✓ 第${C.n}章 Boss净伤 ${bossNo}（不变）　小怪 ${mobs.map(k => {
+    const d = ENEMIES[k].def;
+    return `${ENEMIES[k].name} ${Math.max(1, p.atk - d)}→${Math.max(1, p.atk + UPGMAX - d)}`;
+  }).join('、')}`);
+});
+if (ubad) { console.log(`\n✗ 强化机制 ${ubad} 处问题`); process.exit(1); }
+console.log('\n✅ 铁匠强化加速刷级，但打不穿等级墙');

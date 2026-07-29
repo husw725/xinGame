@@ -36,8 +36,20 @@ function defaultState() {
     dex: [],      // 已唤醒的怪物图鉴
     tools: [],    // 探索工具：lens=放大镜
     rooms: [],    // 已解开的迷宫房间
+    // ---- 跨章内容：让传送阵真的有用 ----
+    errand: null, // 大钟零件委托：null/'given'/'done'（零件散在第1、2、3章）
+    parts: [],    // 已收齐的零件：'gear'铜齿轮(第1章) 'wire'铜丝(第2章) 'glass'钟面玻璃(第3章)
+    mats: {},     // 材料：cog=齿轮碎片（第3章小怪掉，回第1章找铁匠强化武器）
+    upg: 0,       // 武器强化等级（每级 +2 攻，上限 3 级）
   };
 }
+const UPG_MAX = 3, UPG_ATK = 2, UPG_COST = 3;   // 3级上限，每级+2攻，每级3块碎片
+// 零件在哪一章、找谁拿 —— 委托要求你踩传送阵回去
+const ERRAND_PARTS = {
+  gear:  { name:'铜齿轮',   ch:0, who:'铁匠老王' },
+  wire:  { name:'铜丝',     ch:1, who:'扫地的老人' },
+  glass: { name:'钟面玻璃', ch:2, who:'拾荒的小子' },
+};
 let GS = defaultState();
 const SAVE_KEY = 'xinGame_save_v4';
 function saveGame() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(GS)); } catch (e) {} }
@@ -81,6 +93,10 @@ function expNeed(lv) { return 20 + lv * 20; }
 function gearList() { return SLOTS.map(s => GS.p.eq[s]).filter(Boolean).map(k => GEAR[k]); }
 function sumGear(prop) { return gearList().reduce((s, g) => s + (g[prop] || 0), 0); }
 function totalAtk() { return GS.p.atk + sumGear('atk'); }
+// 铁匠强化只对小怪生效。等级墙是按"达标等级净伤15"设计的，任何永久加攻
+// 都会把墙削平（实测 +6 让低5级胜率从4%涨到91%）。所以强化改成只加速刷级，
+// 不碰 Boss —— 想早点通关还是只能练级。
+function upgBonus(vsBoss) { return vsBoss ? 0 : (GS.upg || 0) * UPG_ATK; }
 function totalDef() { return sumGear('def'); }
 function totalSpd() { return sumGear('spd'); }
 // 智力：随等级长，护符加成为主。只影响魔法威力
@@ -409,7 +425,8 @@ class World extends Phaser.Scene {
 
     // --- 地图 ---
     const TILE_TEX = { '.': 't_grass', ',': 't_sand', '-': 't_path', 'T': 't_tree', 'C': 't_cactus', 'k': 't_rock', 'f': 't_fence', 'r': 't_roof', 'w': 't_wall', 'd': 't_door',
-                       's': 't_stone', 'W': 't_swall', 'P': 't_pillar', '~': 't_water' };
+                       's': 't_stone', 'W': 't_swall', 'P': 't_pillar', '~': 't_water',
+                       'g': 't_wood', 'v': 't_stair' };
     this.chests = {};    // "x,y" -> 编号
     this.frags = {};     // "x,y" -> 碎片编号
     this.hidden = {};    // "x,y" -> 碎片编号（需放大镜）
@@ -437,7 +454,8 @@ class World extends Phaser.Scene {
           continue;
         }
         let tex = TILE_TEX[ch];
-        if (!tex) tex = GS.chapter === 0 ? (y < 15 ? 't_grass' : 't_sand') : 't_stone';
+        if (!tex) tex = GS.chapter === 0 ? (y < 15 ? 't_grass' : 't_sand')
+                       : GS.chapter === 2 ? 't_wood' : 't_stone';
         this.add.image(x * TILE + 16, y * TILE + 16, tex).setScale(2);
         if (BLOCK_CHARS.includes(ch)) this.blocked.add(key);
         if (ch === 'd') this.doors.add(key);
@@ -696,7 +714,7 @@ class World extends Phaser.Scene {
     }
     if (this.frags[key] !== undefined) { this.pickFrag(key, this.frags[key], false); return true; }
     if (this.hidden[key] !== undefined) {
-      if (!GS.tools.includes(CHAPTER.hiddenTool)) { this.dialog.say([GS.chapter === 0 ? '这里的沙子好像有点不一样……\n可是什么也看不出来。' : '墙缝里好像卡着什么……\n可是手伸不进去。']); return true; }
+      if (!GS.tools.includes(CHAPTER.hiddenTool)) { this.dialog.say([CHAPTER.hiddenLocked]); return true; }
       this.pickFrag(key, this.hidden[key], true); return true;
     }
     if (ch === 'd') {
@@ -707,19 +725,14 @@ class World extends Phaser.Scene {
     if (this.portal && this.portal.x === nx && this.portal.y === ny) { this.travelHub(); return true; }
     if (ch === 'D') { this.enterDungeon(); return true; }
     if (ch === 'G' && !GS.flags.puzzle) {
-      this.dialog.say([
-        '一扇巨大的石门，上面刻着乘法口诀。',
-        '门缝里透出光，可是推不开——\n旁边那个石室里好像有机关。',
-      ]);
+      this.dialog.say(CHAPTER.gateHint);
       return true;
     }
     // 魔王和它守着的水晶挨在一起，画面上就是一坨，孩子分不清该面朝哪一格。
     // 所以两格都算触发点 —— 四面八方走过来都能打，包括从背后。
     if (!GS.flags.boss && this.isBossFront(nx, ny)) {
       const bn = ENEMIES[CHAPTER.boss].name;
-      this.dialog.say([GS.chapter === 0
-        ? '哞——想要水晶？\n先把乘法口诀背熟再来吧，小豆丁！'
-        : '想过去？先证明你会分东西。\n分不匀的人，我不放行。'], () => {
+      this.dialog.say([CHAPTER.bossTaunt], () => {
         this.dialog.choice(`要挑战${bn}吗？`, ['挑战！', '先撤退…'], i => {
           if (i === 0) this.startBattle(ENEMIES[CHAPTER.boss], { boss: true });
         });
@@ -752,7 +765,7 @@ class World extends Phaser.Scene {
     // 但必须留宽限期 —— 开战有 260ms 转场，这段时间子场景还没起来，
     // 提前解锁会让玩家按住的方向继续生效，一步踏进下一只怪，战斗套战斗出不来。
     if (this.inBattle) {
-      const running = ['Battle', 'Puzzle', 'Candy'].some(k => this.scene.isActive(k));
+      const running = ['Battle', 'Puzzle', 'Candy', 'Clock'].some(k => this.scene.isActive(k));
       if (running) this.lockedAt = 0;
       else {
         if (!this.lockedAt) this.lockedAt = this.time.now;
@@ -804,7 +817,7 @@ class World extends Phaser.Scene {
     }
     if (this.frags[key] !== undefined) { this.pickFrag(key, this.frags[key], false); return; }
     if (this.hidden[key] !== undefined) {
-      if (!GS.tools.includes(CHAPTER.hiddenTool)) { this.dialog.say([GS.chapter === 0 ? '这里的沙子好像有点不一样……\n可是什么也看不出来。' : '墙缝里好像卡着什么……\n可是手伸不进去。']); return; }
+      if (!GS.tools.includes(CHAPTER.hiddenTool)) { this.dialog.say([CHAPTER.hiddenLocked]); return; }
       this.pickFrag(key, this.hidden[key], true); return;
     }
     // 传送阵：走上去就开（跟"进门直接进"一致）。不真的踩上去，免得走开时又触发一次
@@ -855,11 +868,25 @@ class World extends Phaser.Scene {
     if (!npc) return null;
     const talked = (GS.talked || []).includes(GS.chapter + ':' + id);
     switch (npc.role) {
-      case 'clue': return GS.clues.includes(npc.clue) ? null : '!';
-      case 'lore': return GS.chapter === 1
+      case 'clue':
+        // 跨章：第1章铁匠身上压着铜齿轮，委托期间必须挂 !，否则玩家回来了不知道找谁
+        if (GS.chapter === 0 && id === '4' && GS.errand === 'given'
+            && !(GS.parts || []).includes('gear')) return '!';
+        return GS.clues.includes(npc.clue) ? null : '!';
+      case 'lore':
+        if (GS.chapter === 1 && GS.errand === 'given'
+            && !(GS.parts || []).includes('wire')) return '!';
+        return GS.chapter === 1
         ? (GS.clues.includes('c2d') ? null : '!')
         : (talked ? null : '!');
       case 'quest': {
+        if (GS.chapter === 2) {                    // 滴答：换物链
+          const st = GS.quest.trade;
+          if (!st) return '!';                     // 还没接
+          if (st === 'has_bell') return '!';        // 铃舌拿到了，回去交
+          if (st === 'done') return null;
+          return '?';
+        }
         if (GS.chapter === 1) {                    // 小满：传话
           const st = GS.quest.step;
           if (!st) return '!';                     // 还没接
@@ -874,12 +901,30 @@ class World extends Phaser.Scene {
         return '?';
       }
       case 'chat': {
+        if (GS.chapter === 2) {                    // 小铃：换物链的中间一环
+          const st = GS.quest.trade;
+          if (st === 'want_bell') return '!';       // 该来问他要铃舌
+          if (st === 'need_wire') return '?';       // 他在等钢丝
+          if (st === 'has_wire') return '!';        // 钢丝到手，回来换
+          return talked ? null : '!';
+        }
         if (GS.chapter === 1) {                    // 阿力兼传话对象
           const st = GS.quest.step;
           if (st === 'ask_boy' || st === 'back_boy') return '!';
           if (st === 'back_girl') return '?';
         }
         return talked ? null : '!';
+      }
+      // trade：换物链上给东西的人；跨章委托要玻璃时也挂
+      case 'trade':
+        if (GS.errand === 'given' && !(GS.parts || []).includes('glass')) return '!';
+        return GS.quest.trade === 'need_wire' ? '!' : null;
+      // errand：跨章委托。零件没齐是 ?，齐了是 !，做完不标
+      case 'errand': {
+        if (!GS.errand) return '!';
+        if (GS.errand === 'done') return null;
+        const need = ['gear', 'wire', 'glass'].filter(k => !(GS.parts || []).includes(k));
+        return need.length ? '?' : '!';
       }
       // info：开场说明的承接者。打完魔王换台词，所以那时要重新挂一次 !
       case 'info': return GS.talked.includes(talkKey(id, npc)) ? null : '!';
@@ -929,6 +974,8 @@ class World extends Phaser.Scene {
     if (!GS.talked.includes(tk)) { GS.talked.push(tk); saveGame(); }
     if (npc && npc.role === 'clue')   { this.npcClue(id, npc); return; }
     if (npc && npc.role === 'quest')  { this.npcQuest(id, npc); return; }
+    if (npc && npc.role === 'trade')  { this.npcTrade(npc); return; }
+    if (npc && npc.role === 'errand') { this.npcErrand(npc); return; }
     if (npc && npc.role === 'lore')   { this.npcLore(npc); return; }
     if (npc && npc.role === 'chat')   { this.npcChat(npc); return; }
     // info：台词直接写在 data.js 里。开场那一大段说明就是拆给这类 NPC 的，
@@ -947,11 +994,10 @@ class World extends Phaser.Scene {
         // 世界观交代原来在开场旁白里，现在挪到这儿 —— 孩子自己走过来问才记得住
         : [GS.chapter === 0
              ? '勇者啊，你终于来了！\n遗忘魔王偷走了【记忆水晶】，\n知识精灵全都变成了怪物。'
-             : '你是外面来的？\n这儿的第二颗水晶也被抢了。',
-           GS.chapter === 0 ? '去南边沙漠打败【口诀骆驼王】，\n把第一颗水晶夺回来！' : '回廊尽头的分糖巨人守着第二颗水晶。',
+             : '你是外面来的？\n这儿的水晶也被抢了。',
+           CHAPTER.elderWhere,
            '路上有一扇大石门，推不开的。\n旁边石室里有会动的石箱，\n那是开门的机关。',
-           GS.chapter === 0 ? '沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。'
-                            : '四个角上的侧厅别漏了，\n里头有人藏过东西。',
+           CHAPTER.elderSide,
            '答错的题会变成【怨念怪】出现在村口，\n打败它才算真正学会哦！'];
       this.dialog.say(lines, () => {
         this.dialog.choice('要在村长家休息一下吗？（免费恢复）', ['休息（恢复HP/MP）', '不用了'], i => {
@@ -1105,7 +1151,7 @@ class World extends Phaser.Scene {
   }
 
   showDex() {
-    const all = GS.chapter === 0 ? ['slime','imp','wraith','revenge','boss'] : ['spider','imp2','owl','revenge','boss2'];
+    const all = CHAPTER.dex;
     const lines = [`图鉴 ${GS.dex.length}/${all.length}`];
     all.forEach(k => {
       const e = ENEMIES[k];
@@ -1163,17 +1209,12 @@ class World extends Phaser.Scene {
   elderTravel() {
     const nx = CHAPTERS[GS.chapter + 1];
     const left = 8 - chapterFrags();
-    const intro = GS.chapter === 0
-      ? ['你夺回了第一颗水晶！\n可水晶一直在抖……',
-         '（长老捧起水晶，它慢慢转向北方。）',
-         '它在指路。\n第二颗水晶在【除法回廊】。',
-         '那地方原本热闹。\n直到一个巨人住了进去 ——',
-         '他不抢东西，他"分"东西。\n什么都要分成一样多的几份。',
-         '锅碗、粮食、连门板都拆了平分。\n分不完的零头堆在角落，谁也不敢动。']
-      : ['水晶又开始指路了……'];
+    const intro = ['你夺回了这一颗水晶！\n可水晶一直在抖……',
+                   '（他捧起水晶，它慢慢转了个方向。）',
+                   `它在指路。\n下一颗水晶在【${nx.name}】。`].concat(nx.elderTease || []);
     if (left > 0) intro.push(`对了，你手上那本日记 ——\n本章还差 ${left} 页。\n（出发前可以再找找）`);
     this.dialog.say(intro, () => {
-      this.dialog.choice('现在就出发去除法回廊吗？', ['出发', '再等等'], i => {
+      this.dialog.choice(`现在就出发去${nx.name}吗？`, ['出发', '再等等'], i => {
         if (i !== 0) { this.dialog.say(['不急，随时来找我。'], null, '长老'); return; }
         this.travelTo(GS.chapter + 1);
       });
@@ -1190,12 +1231,8 @@ class World extends Phaser.Scene {
       const txt = this.add.text(W / 2, H / 2, '', { fontSize: '21px', fontFamily: FONT, color: '#ffe08a',
         align: 'center', wordWrap: { width: 400 }, lineSpacing: 10 }).setOrigin(0.5).setScrollFactor(0).setDepth(401);
       cam.fadeIn(1, 0, 0, 0);
-      const beats = [
-        '你跟着水晶往北走。',
-        '沙子渐渐变成石板。',
-        '风声停了，脚步声开始有回音。',
-        '一圈一圈的石廊立在眼前 ——\n【除法回廊】。',
-      ];
+      const beats = (CHAPTERS[idx] && CHAPTERS[idx].travelBeats)
+        || [`你往【${CHAPTERS[idx].name}】走去。`];
       let k = 0;
       const step = () => {
         if (k >= beats.length) {
@@ -1343,6 +1380,20 @@ class World extends Phaser.Scene {
   npcClue(id, npc) {
     const c = CLUES[npc.clue];
     const first = !GS.clues.includes(npc.clue);
+    // 跨章：第1章铁匠既给铜齿轮，也管强化武器（料是第3章掉的）
+    if (GS.chapter === 0 && id === '4') {
+      GS.parts = GS.parts || [];
+      if (GS.errand === 'given' && !GS.parts.includes('gear')) {
+        GS.parts.push('gear'); saveGame();
+        this.dialog.say(['（铁匠接过守夜人的字条，眉毛一挑。）',
+          '钟楼那位要铜齿轮？早说啊。',
+          '（叮叮当当一阵，他递过来一枚齿轮。）',
+          '（你得到了铜齿轮。）',
+          '……你这小子跑得挺远。\n以后有事再来。'], null, npc.name);
+        return;
+      }
+      if (GS.errand === 'done') { this.smithUpgrade(); return; }
+    }
     if (GS.chapter === 1) {
       const said = {
         '4': first ? ['（账房先生噼里啪啦打着算盘。）', c.ask, '信不信由你。']
@@ -1434,6 +1485,7 @@ class World extends Phaser.Scene {
 
   // ---- 委托 NPC：线索要靠帮忙换 ----
   npcQuest(id, npc) {
+    if (GS.chapter === 2) { this.questTick(npc); return; }
     if (GS.chapter === 1) { this.questRelay(npc); return; }
     const st = GS.quest.dodo;
     if (!st) {
@@ -1460,7 +1512,214 @@ class World extends Phaser.Scene {
   }
 
   // ---- 暗线 NPC：让主线谜团从环境里渗出来 ----
+  // ---- 第3章委托：换物链（第1章取物、第2章传话，这是第三种）----
+  // 滴答要铃舌 → 小铃有，但要钢丝 → 拾荒小子给钢丝 → 回小铃换 → 交滴答
+  questTick(npc) {
+    const st = GS.quest.trade;
+    const set = v => { GS.quest.trade = v; saveGame(); };
+    if (!st) {
+      this.dialog.say([
+        '（她抱着一个小钟，钟里空空的。）',
+        '我的小钟不响了。\n里面的铃舌掉了，找不着。',
+        '小铃那儿好像有一颗。\n你能帮我问问他吗？',
+      ], () => set('want_bell'), npc.name);
+      return;
+    }
+    if (st === 'has_bell') {
+      set('done');
+      GS.p.gold += 300;
+      this.dialog.say([
+        '（你把铃舌递过去。）',
+        '装上了！\n叮——叮——',
+        '响了！它又会响了！',
+        '这个给你，是我攒的。\n💰300 金币！',
+      ], () => { this.updateHUD(); }, npc.name);
+      return;
+    }
+    if (st === 'done') {
+      this.dialog.say(['叮——叮——\n（小钟在她怀里响着。）',
+        '现在我知道什么时候该回家了。'], null, npc.name);
+      return;
+    }
+    const wait = { want_bell: '小铃在楼下。他有铃舌的。',
+                   need_wire: '小铃要一根细钢丝？\n那种东西……拾荒的小子那儿有吧。',
+                   has_wire: '你拿到钢丝了！\n快去跟小铃换。' }[st];
+    this.dialog.say([wait], null, npc.name);
+  }
+
+  // 小铃：换物链的中间一环
+  questRing(npc) {
+    const st = GS.quest.trade;
+    const set = v => { GS.quest.trade = v; saveGame(); };
+    if (st === 'want_bell') {
+      this.dialog.say([
+        '铃舌？我有一颗，捡的。',
+        '不过我不白给。',
+        '我的钟摆断了根细钢丝，\n你给我找一根来，我就换。',
+        '拾荒的小子天天翻废料，\n问他准有。',
+      ], () => set('need_wire'), npc.name);
+      return;
+    }
+    if (st === 'need_wire') {
+      this.dialog.say(['钢丝呢？还没找到？',
+        '塔下头那个拾荒的小子，去问他。'], null, npc.name);
+      return;
+    }
+    if (st === 'has_wire') {
+      set('has_bell');
+      this.dialog.say([
+        '（你把钢丝递过去。）',
+        '正好！就是这种粗细。',
+        '喏，铃舌给你。\n拿去给滴答吧，她哭了好几天了。',
+      ], null, npc.name);
+      return;
+    }
+    if (st === 'has_bell' || st === 'done') {
+      this.dialog.say(['滴答的钟响了吧？\n我听见了。'], null, npc.name);
+      return;
+    }
+    const lines = GS.flags.boss
+      ? ['塔顶的大钟又走了！', '我也该把自己的钟摆修好了。']
+      : ['我在修一个钟摆。', '滴答老哭，因为她的钟不响。\n……我这儿倒是有颗铃舌。'];
+    this.dialog.say(lines, null, npc.name);
+  }
+
+  // ---- 跨章委托：大钟的三个零件 ----
+  // 零件分别在第1、2、3章，必须踩传送阵回去拿。做完解锁第1章铁匠的强化服务，
+  // 而强化要用第3章小怪掉的齿轮碎片 —— 前后章互相咬住，传送阵才有存在的理由
+  npcErrand(npc) {
+    GS.parts = GS.parts || [];
+    const have = k => GS.parts.includes(k);
+    const left = Object.keys(ERRAND_PARTS).filter(k => !have(k));
+    if (GS.errand === 'done') {
+      this.dialog.say(['大钟走得很准。\n谢谢你跑这几趟。',
+        `铁匠老王那儿你随时去 ——\n他现在肯给你强化武器了。`,
+        '（要用齿轮碎片，塔里的怪身上有。\n强化只对小怪管用，练级会快很多。）'],
+        null, npc.name);
+      return;
+    }
+    if (!GS.errand) {
+      GS.errand = 'given'; saveGame();
+      this.dialog.say([
+        '（他抱着一堆图纸，愁得很。）',
+        '大钟能修，可有三个零件塔里没有。',
+        `${ERRAND_PARTS.gear.name}——沙漠那个铁匠打得出来。`,
+        `${ERRAND_PARTS.wire.name}——回廊扫地的老人收着一卷。`,
+        `${ERRAND_PARTS.glass.name}——塔下拾荒的小子那儿有。`,
+        '踩传送圆盘回去问他们。\n你的等级和装备都带着走，不吃亏。',
+      ], null, npc.name);
+      return;
+    }
+    if (left.length) {
+      this.dialog.say([
+        `还差 ${left.length} 样：`,
+        left.map(k => `${ERRAND_PARTS[k].name} —— 第${ERRAND_PARTS[k].ch + 1}章的${ERRAND_PARTS[k].who}`).join('\n'),
+        '圆盘就在镇口，踩上去就能过去。',
+      ], null, npc.name);
+      return;
+    }
+    GS.errand = 'done'; GS.p.gold += 500; saveGame();
+    this.updateHUD();
+    this.dialog.say([
+      '（你把三样零件放在桌上。）',
+      '齿轮、铜丝、玻璃……齐了！',
+      '（他装上零件，大钟嗡地响了一下。）',
+      '当——当——',
+      '这是谢礼，💰500 金币。',
+      '还有件事：我给铁匠老王写了封信。',
+      '他手艺好，以前不肯给外人打东西。\n你带着我的话去，他会给你强化武器。',
+      '（塔里的怪身上常掉齿轮碎片，\n那就是强化要用的料。）',
+    ], null, npc.name);
+  }
+
+  // 铁匠强化武器（第1章的 NPC，用第3章的材料）—— 上限 3 级，不会打穿等级墙
+  smithUpgrade() {
+    const cog = (GS.mats && GS.mats.cog) || 0;
+    const lv = GS.upg || 0;
+    if (lv >= UPG_MAX) {
+      this.dialog.say([`你的武器已经强化到 +${lv} 了。`,
+        '再打下去就要断了，到此为止吧。'], null, '铁匠老王');
+      return;
+    }
+    if (cog < UPG_COST) {
+      this.dialog.say([`强化一次要 ${UPG_COST} 块齿轮碎片。`,
+        `你只有 ${cog} 块。`,
+        '钟楼里的怪身上常掉，\n打几只再来。'], null, '铁匠老王');
+      return;
+    }
+    this.dialog.choice(
+      `强化武器？\n齿轮碎片 ${cog}/${UPG_COST}　现在 +${lv}\n（打小怪伤害 +${UPG_ATK}，打魔王不算）`,
+      ['打！', '再想想'], i => {
+        if (i !== 0) return;
+        GS.mats.cog -= UPG_COST;
+        GS.upg = lv + 1;
+        saveGame(); this.updateHUD();
+        this.dialog.say([
+          '（叮！叮！叮！火星四溅。）',
+          `成了！武器变成 +${GS.upg} 了。`,
+          `打小怪利索多了 —— 伤害 +${GS.upg * UPG_ATK}。`,
+          '不过魔王身上有护，这刀吃不住。\n打魔王还是得靠等级。',
+        ], null, '铁匠老王');
+      });
+  }
+
+  // 拾荒的小子：既是换物链一环，也管跨章委托的钟面玻璃
+  npcTrade(npc) {
+    if (GS.errand === 'given' && !(GS.parts || []).includes('glass')) {
+      GS.parts = (GS.parts || []).concat('glass'); saveGame();
+      this.dialog.say([
+        '守夜人要钟面玻璃？',
+        '有有有，昨天刚捡的一片。',
+        '（你得到了钟面玻璃。）',
+      ], null, npc.name);
+      return;
+    }
+    const st = GS.quest.trade;
+    if (st === 'need_wire') {
+      GS.quest.trade = 'has_wire'; saveGame();
+      this.dialog.say([
+        '（他面前摊着一堆零碎的铜铁。）',
+        '细钢丝？有啊，一大把。',
+        '拿去吧，反正我也不用。',
+        '（你得到了一根细钢丝。）',
+      ], null, npc.name);
+      return;
+    }
+    if (st === 'has_wire') {
+      this.dialog.say(['钢丝拿好了吧？\n别弄丢了。'], null, npc.name);
+      return;
+    }
+    this.dialog.say(['（他蹲在一堆铜铁前面挑东西。）',
+      '这些都是塔里掉下来的零件。',
+      '要什么跟我说，说不定我有。'], null, npc.name);
+  }
+
   npcLore(npc) {
+    // 跨章：第2章扫地的老人收着那卷铜丝
+    if (GS.chapter === 1 && GS.errand === 'given' && !(GS.parts || []).includes('wire')) {
+      GS.parts = (GS.parts || []).concat('wire'); saveGame();
+      this.dialog.say(['（老人停下扫帚。）',
+        '铜丝？钟楼的守夜人要的吧。',
+        '我这儿收着一卷，压在墙角好些年了。',
+        '（你得到了铜丝。）',
+        '钟要是能走，那孩子……算了，你去吧。'], null, npc.name);
+      return;
+    }
+    if (GS.chapter === 2) {
+      const first = !GS.clues.includes('c3d');
+      const lines = GS.flags.boss
+        ? ['（老人在给大钟上油。）',
+           '它又走了。你听 —— 嗒、嗒。',
+           '很多年前也有个孩子，\n天天坐在塔底下等天黑。',
+           '他说他想把钟拨慢一点。',
+           '……你捡的那些纸，\n是不是他写的？']
+        : ['（老人趴在齿轮上敲敲打打。）',
+           '这钟我修了二十年。\n它以前从没停过。',
+           CLUES.c3d.ask,
+           '早年有个孩子常来。\n坐在塔底下，一直坐到天黑。'];
+      this.dialog.say(lines, () => { if (first) this.addClue('c3d'); }, npc.name);
+      return;
+    }
     if (GS.chapter === 1) {
       const c = CLUES.c2d;
       const first = !GS.clues.includes('c2d');
@@ -1491,6 +1750,7 @@ class World extends Phaser.Scene {
 
   // ---- 闲聊 NPC：世界要活，台词随进度变 ----
   npcChat(npc) {
+    if (GS.chapter === 2) { this.questRing(npc); return; }
     if (GS.chapter === 1) { this.questBoy(npc); return; }
     const lines = GS.flags.boss
       ? ['你把骆驼王打败啦？！',
@@ -1514,7 +1774,42 @@ class World extends Phaser.Scene {
       else if (lock.kind === 'balance') this.lockCalc(key, n, 'balance');
       else if (lock.kind === 'code')    this.lockCode(key, n, lock);
       else if (lock.kind === 'riddle')  this.lockRiddle(key, n, lock);
+      else if (lock.kind === 'schedule') this.lockCalc(key, n, 'timespan');
+      else if (lock.kind === 'clock')   this.lockClock(key, n, lock);
     });
+  }
+
+  // 钟面锁（第3章）：三个人各记着一个时刻，两个对得上的才是真的。
+  // 和第2章的真假话不同 —— 这里是"互相印证"，不是逻辑排除
+  lockClock(key, n, lock) {
+    const known = lock.clues.filter(k => GS.clues.includes(k));
+    if (known.length < lock.clues.length) {
+      this.dialog.say([
+        '箱盖上是个小钟面，指针可以拨。',
+        `镇上三个人各记着一个时刻，\n你只问到了 ${known.length}/3 个。`,
+        '先去问齐。\n（记在冒险手册的线索本里）',
+      ]);
+      return;
+    }
+    const L = CH3_CLOCKLOCK;
+    const fmt = t => t.h + ':' + String(t.m).padStart(2, '0');
+    this.dialog.say(
+      lock.clues.map(k => `${CLUES[k].from}：\n「${CLUES[k].ask}」`)
+        .concat(['三个人里有两个说的其实是同一个时刻。\n大钟停在几点？']),
+      () => {
+        this.dialog.choice('停在……', L.candidates.map(fmt).concat('再想想'), i => {
+          if (i >= L.candidates.length) return;
+          const pick = L.candidates[i];
+          if (pick.h === L.answer.h && pick.m === L.answer.m) {
+            GS.locks.push(n); saveGame();
+            this.dialog.say(['咔哒——箱子开了！', `想对了：\n${L.explain}`], () => this.openChest(key, n));
+          } else {
+            this.dialog.say([`${fmt(pick)}？\n只有一个人这么说。`,
+                             '找那个有两个人都指向的时刻。\n（不会有惩罚的）'],
+              () => this.lockClock(key, n, lock));
+          }
+        });
+      });
   }
 
   // 算式锁 / 天平锁：都是四选一，共用一套
@@ -1705,18 +2000,20 @@ class World extends Phaser.Scene {
   enterDungeon() {
     const left = SOKOBAN.length - GS.rooms.length;
     if (left === 0) { this.dialog.say(['石室里的机关都解开了。']); return; }
-    const desc = CHAPTER.puzzle.kind === 'candy'
-      ? '石室中间堆着一小堆糖，\n旁边摆着几个空盘子。'
+    const K = CHAPTER.puzzle.kind;
+    const desc = K === 'candy' ? '石室中间堆着一小堆糖，\n旁边摆着几个空盘子。'
+      : K === 'clock' ? '屋子中间立着一面大钟，\n指针可以拨动。墙上刻着一行字。'
       : '石室里摆着几个刻了数字的石箱，\n地上有写着口诀的凹槽。';
     this.dialog.say([desc], () => {
-      this.dialog.choice(`要进石室吗？（还剩 ${left} 间）`, ['进去！', '再等等'], i => {
+      const room = K === 'clock' ? '钟室' : '石室';
+      this.dialog.choice(`要进${room}吗？（还剩 ${left} 间）`, ['进去！', '再等等'], i => {
         if (i !== 0) return;
         this.inBattle = true;   // 借用同一个锁，避免地图继续响应输入
         this.lockedAt = 0;
         this.held = null; this.queued = null;
         const next = SOKOBAN.findIndex((_, k) => !GS.rooms.includes(k));
         this.cameras.main.resetFX();
-        this.scene.launch(CHAPTER.puzzle.kind === 'candy' ? 'Candy' : 'Puzzle', { room: next });
+        this.scene.launch(K === 'candy' ? 'Candy' : K === 'clock' ? 'Clock' : 'Puzzle', { room: next });
         this.scene.sleep();
       });
     });
@@ -1796,9 +2093,7 @@ class World extends Phaser.Scene {
           '骆驼王：谢谢你……我想起来了，\n我本来是守护口诀的精灵啊！',
           '你拿到了第一颗【记忆水晶】！',
           `这个也给你吧。\n${CHAPTER.toolName} 到手了！`,
-          GS.chapter === 0
-            ? '「沙漠里有几处沙子不太一样，\n用放大镜看看，会有发现的。」'
-            : '「回廊的墙缝里卡着东西。\n用钩爪就够得着了。」',
+          CHAPTER.toolHint,
           `本章记忆碎片还差 ${8 - chapterFrags()} 页。\n回头去找找吧。`,
         ], () => this.scene.start('Clear'), '');
         this.crystal && this.tweens.add({ targets: this.crystal, y: this.crystal.y - 60, alpha: 0, duration: 1500, onComplete: () => this.crystal.destroy() });
@@ -2215,7 +2510,7 @@ class Battle extends Phaser.Scene {
       this.combo++;
       const perfect = this.combo % 3 === 0;   // 连对3次：暴击 + 完美格挡 + 回MP
       const subject = /[+−×]/.test(this.q.text) ? 'math' : 'chinese';
-      let dmg = Math.max(1, totalAtk() - this.enemy.def) + Phaser.Math.Between(0, 2);
+      let dmg = Math.max(1, totalAtk() + upgBonus(this.isBoss) - this.enemy.def) + Phaser.Math.Between(0, 2);
       dmg = Math.round(dmg * gearBoost(subject));
       if (this.isSkill) dmg = Math.round(dmg * 2.2);
       if (this.focused) { dmg *= 2; this.focused = false; }
@@ -2231,7 +2526,7 @@ class Battle extends Phaser.Scene {
       this.tweens.add({ targets: this.enemySprite, x: '+=10', duration: 50, yoyo: true, repeat: 3, onComplete: () => this.enemySprite.clearTint() });
 
       // 等级不足时给明确反馈，而不是干巴巴的 -1
-      const tooWeak = totalAtk() - this.enemy.def <= 1;
+      const tooWeak = totalAtk() + upgBonus(this.isBoss) - this.enemy.def <= 1;
       if (tooWeak && !perfect) this.showFloat('伤不到它…', '#ff9955');
       else this.showFloat(`-${dmg}${perfect ? ' 暴击!!' : ''}`, perfect ? '#ffd700' : '#ffffff');
       if (tier.mult > 1) {
@@ -2324,6 +2619,13 @@ class Battle extends Phaser.Scene {
       GS.p.exp += expGain;
       GS.p.gold += goldGain;
       msgs.push(`获得 ${expGain} 经验、💰${goldGain} 金币！`);
+      // 齿轮碎片：只有钟楼的怪会掉，是回第1章找铁匠强化武器的料。
+      // 掉率给足（一半），不然为了 3 块碎片刷半小时，孩子早烦了
+      if (CHAPTER.dropCog && !this.isRevenge && Phaser.Math.Between(1, 100) <= 50) {
+        GS.mats = GS.mats || {};
+        GS.mats.cog = (GS.mats.cog || 0) + 1;
+        msgs.push(`掉了一块【齿轮碎片】！（共 ${GS.mats.cog} 块）\n拿回沙漠找铁匠能强化武器。`);
+      }
       while (GS.p.exp >= expNeed(GS.p.lv)) {
         GS.p.exp -= expNeed(GS.p.lv);
         const before = learned();
@@ -2662,6 +2964,152 @@ class Candy extends Phaser.Scene {
   }
 }
 
+// ============ 钟面机关（第3章招牌谜题）============
+// 拖指针在手机上很难拖准，改成 ＋时/－时/＋5分/－5分 四个按钮 —— 每一下都是
+// 一个明确的量，孩子按的时候其实在做"加减 60 进位"这件事本身。
+class Clock extends Phaser.Scene {
+  constructor() { super('Clock'); }
+  init(data) { this.roomIdx = data.room || 0; }
+
+  create() {
+    const lv = SOKOBAN[this.roomIdx];      // loadChapter 已把本章谜题装进 SOKOBAN
+    this.lv = lv;
+    this.h = lv.start.h; this.m = lv.start.m;
+    this.done = false;
+    this.tries = 0;
+
+    this.add.rectangle(W / 2, H / 2, W, H, 0x1a1a22);
+    this.add.text(W / 2, 40, lv.name, { fontSize: '25px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(W / 2, 74, `钟面 ${this.roomIdx + 1} / ${SOKOBAN.length}`, { fontSize: '17px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
+    this.add.text(W / 2, 112, lv.riddle, { fontSize: '19px', fontFamily: FONT, color: '#fff2c0',
+      align: 'center', wordWrap: { width: 430 }, lineSpacing: 6 }).setOrigin(0.5);
+
+    // --- 钟面 ---
+    const cx = W / 2, cy = 300, R = 118;
+    this.add.circle(cx, cy, R + 8, 0x3a3a48).setStrokeStyle(4, 0xf4e6c0);
+    this.add.circle(cx, cy, R, 0xf7f0dc);
+    for (let i = 1; i <= 12; i++) {
+      const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+      this.add.text(cx + Math.cos(a) * (R - 20), cy + Math.sin(a) * (R - 20), String(i),
+        { fontSize: '19px', fontFamily: FONT, color: '#3a2f18', fontStyle: 'bold' }).setOrigin(0.5);
+    }
+    // 分钟刻度，帮孩子数 5 格一大格
+    for (let i = 0; i < 60; i++) {
+      const a = (i / 60) * Math.PI * 2 - Math.PI / 2;
+      const big = i % 5 === 0;
+      this.add.rectangle(cx + Math.cos(a) * (R - 5), cy + Math.sin(a) * (R - 5),
+        big ? 3 : 2, big ? 8 : 4, 0x8a7548).setRotation(a + Math.PI / 2);
+    }
+    this.hourHand = this.add.rectangle(cx, cy, 8, R * 0.52, 0x2a2a34).setOrigin(0.5, 1);
+    this.minHand  = this.add.rectangle(cx, cy, 5, R * 0.82, 0xc8433a).setOrigin(0.5, 1);
+    this.add.circle(cx, cy, 7, 0x2a2a34);
+    this.timeText = this.add.text(cx, cy + R + 34, '', { fontSize: '30px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+
+    // --- 拨针按钮 ---
+    const mk = (x, y, w, label, fn) => {
+      const b = makeButton(this, x, y, w, 58, label, () => { if (!this.done) { fn(); this.paint(); } }, { fontSize: '20px' });
+      return b;
+    };
+    mk(120, 500, 190, '－ 1 时', () => { this.h = (this.h + 23) % 24; });
+    mk(360, 500, 190, '＋ 1 时', () => { this.h = (this.h + 1) % 24; });
+    mk(120, 566, 190, '－ 5 分', () => this.addMin(-5));
+    mk(360, 566, 190, '＋ 5 分', () => this.addMin(5));
+    mk(120, 632, 190, '↺ 复位', () => { this.h = lv.start.h; this.m = lv.start.m; });
+    mk(360, 632, 190, '✓ 就这个', () => this.submit());
+
+    this.tip = this.add.text(W / 2, 700, '拨到石刻说的那个时刻，再按「就这个」',
+      { fontSize: '17px', fontFamily: FONT, color: '#c8d4f0', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5);
+
+    makeButton(this, W / 2, 780, 230, 56, '💡 提示', () => {
+      if (!this.done) this.tip.setText(lv.hint);
+    }, { fontSize: '18px' });
+
+    this.paint();
+  }
+
+  // 分针过 60 要进位到时针 —— 这就是本章的知识点，代码也照这个写
+  addMin(d) {
+    let t = this.h * 60 + this.m + d;
+    t = ((t % (24 * 60)) + 24 * 60) % (24 * 60);
+    this.h = Math.floor(t / 60); this.m = t % 60;
+  }
+
+  paint() {
+    const ma = (this.m / 60) * Math.PI * 2;
+    const ha = ((this.h % 12) / 12 + this.m / 720) * Math.PI * 2;   // 时针也随分针慢慢走
+    this.minHand.setRotation(ma);
+    this.hourHand.setRotation(ha);
+    this.timeText.setText(this.h + ':' + String(this.m).padStart(2, '0'));
+  }
+
+  submit() {
+    const lv = this.lv, t = lv.target;
+    if (this.h === t.h && this.m === t.m) { this.win(); return; }
+    this.tries++;
+    const mine = this.h * 60 + this.m, want = t.h * 60 + t.m;
+    const diff = want - mine;
+    // 差在哪儿就说哪儿，别只说"错了"
+    let why;
+    if (Math.abs(diff) % 60 === 0) why = `时针差 ${Math.abs(diff) / 60} 个小时。`;
+    else if (this.h === t.h) why = `时针对了，分针还差 ${Math.abs(diff)} 分。`;
+    else why = `再看看：应该是 ${t.h} 点多，\n你现在拨的是 ${this.h} 点多。`;
+    this.tip.setText(why + (this.tries >= 3 ? '\n' + lv.hint : '\n（随便试，不会有惩罚）'));
+  }
+
+  win() {
+    const lv = this.lv;
+    this.done = true;
+    this.cameras.main.flash(300, 255, 240, 180);
+    if (!GS.rooms.includes(this.roomIdx)) GS.rooms.push(this.roomIdx);
+    const lines = [`当——\n指针停在 ${lv.target.h}:${String(lv.target.m).padStart(2, '0')}，\n齿轮转了起来！`, lv.hint];
+    const rw = lv.reward;
+    if (rw.kind === 'gold') { GS.p.gold += rw.val; lines.push(`石台上有 💰${rw.val} 金币！`); }
+    else if (rw.kind === 'gear') {
+      const g = GEAR[rw.key];
+      const old = GS.p.eq[g.slot];
+      GS.p.eq[g.slot] = rw.key;
+      if (old && GEAR[old].buy > 0) GS.p.bag.push(old);
+      lines.push(`石台上放着【${g.name}】！\n${g.desc}`);
+    } else if (rw.kind === 'frag') {
+      const g = fragGlobal(GS.chapter, rw.idx);
+      if (!GS.frags.includes(g)) {
+        GS.frags.push(g);
+        lines.push('地上有一页发黄的纸……', fragText(g), `（本章记忆碎片 ${chapterFrags()}/8）`);
+      }
+    }
+    if (SOKOBAN.every((_, i) => GS.rooms.includes(i))) {
+      GS.flags.puzzle = true;
+      lines.push('三个钟面都拨对了！\n通往塔顶的钟门开了。');
+    }
+    saveGame();
+    this.panel(lines, () => {
+      const next = SOKOBAN.findIndex((_, i) => !GS.rooms.includes(i));
+      if (next >= 0) this.scene.restart({ room: next });
+      else this.leave();
+    });
+  }
+
+  panel(lines, cb) {
+    const bg = this.add.rectangle(W / 2, H / 2, 456, 320, 0x14182e, 0.97).setStrokeStyle(4, 0xf4e6c0).setDepth(100);
+    const txt = this.add.text(W / 2, H / 2 - 30, '', { fontSize: '20px', fontFamily: FONT, color: '#fff',
+      align: 'center', wordWrap: { width: 410 }, lineSpacing: 8 }).setOrigin(0.5).setDepth(101);
+    const q = lines.slice();
+    const btn = makeButton(this, W / 2, H / 2 + 110, 200, 56, '继续', () => {
+      if (q.length) { txt.setText(q.shift()); return; }
+      bg.destroy(); txt.destroy(); btn.destroy(); cb();
+    }, { fontSize: '20px' });
+    btn.bg.setDepth(101); btn.txt.setDepth(102);
+    txt.setText(q.shift());
+  }
+
+  leave() {
+    GS.fromPuzzle = true;
+    saveGame();
+    this.scene.stop();
+    this.scene.wake('World');
+  }
+}
+
 // ============ 通关 ============
 class Clear extends Phaser.Scene {
   constructor() { super('Clear'); }
@@ -2718,6 +3166,6 @@ window.game = new Phaser.Game({
   pixelArt: true,
   backgroundColor: '#000',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, World, Battle, Puzzle, Candy, Clear],
+  scene: [Boot, Title, World, Battle, Puzzle, Candy, Clock, Clear],
 });
 window.GS = GS;

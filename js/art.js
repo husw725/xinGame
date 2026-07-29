@@ -233,6 +233,99 @@ const SPRITES = {
       "................",
     ],
   },
+  // ---- 第三章：钟楼的三种怪 ----
+  // 齿轮蜘蛛：身体就是一枚齿轮
+  cog: {
+    p: { m:'#8a8f9a', l:'#c2c8d4', w:'#ffffff', k:'#111111', y:'#f4c542' },
+    r: [
+      "................",
+      "....m..mm..m....",
+      "...mmmmmmmmmm...",
+      "..mmllllllllmm..",
+      "..mllllllllllm..",
+      "mmllwkllllwkllmm",
+      "..mllllllllllm..",
+      "..mlllyyyylllm..",
+      "..mllllyyllllm..",
+      "..mmllllllllmm..",
+      "...mmmmmmmmmm...",
+      "....m..mm..m....",
+      "..m..m....m..m..",
+      ".m...m....m...m.",
+      "................",
+      "................",
+    ],
+  },
+  // 走时铜铃
+  bell: {
+    p: { b:'#c8a03a', d:'#8a6a1a', w:'#ffffff', k:'#111111', y:'#fff2a0' },
+    r: [
+      "................",
+      ".......dd.......",
+      "......dbbd......",
+      ".....dbbbbd.....",
+      "....dbbbbbbd....",
+      "...dbbbbbbbbd...",
+      "...dbwkbbwkbd...",
+      "..dbbbbbbbbbbd..",
+      "..dbbbyyyybbbd..",
+      ".dbbbbbbbbbbbbd.",
+      ".dbbbbbbbbbbbbd.",
+      "ddddddddddddddd.",
+      "................",
+      "......dyyd......",
+      "................",
+      "................",
+    ],
+  },
+  // 沙漏懒虫：细腰沙漏，睡眼
+  sandw: {
+    p: { s:'#e0c890', d:'#a8874a', w:'#ffffff', k:'#111111', y:'#f4c542' },
+    r: [
+      "................",
+      "..dddddddddddd..",
+      "..dssssssssssd..",
+      "..dswkssswksd...",
+      "..dsssssssssd...",
+      "...dsssyyssd....",
+      "....dsssssd.....",
+      ".....dsssd......",
+      ".....dsssd......",
+      "....dsyyysd.....",
+      "...dsyyyyysd....",
+      "..dsyyyyyyysd...",
+      "..dsyyyyyyyysd..",
+      "..dddddddddddd..",
+      "................",
+      "................",
+    ],
+  },
+  // 时针幽灵：飘着的钟面，指针就是手
+  boss3: {
+    p: { g:'#9fb8e8', d:'#5a6ea8', w:'#ffffff', k:'#111111', y:'#f4c542', c:'#e8eeff' },
+    r: [
+      "......gggggggg......",
+      "....gggggggggggg....",
+      "...gggccccccccggg...",
+      "..ggccccccccccccgg..",
+      "..ggccwkccccwkccgg..",
+      "..ggccccccccccccgg..",
+      "..ggcccyycccccccgg..",
+      "..ggcccyyyyccccggg..",
+      "..ggcccyycccccggg...",
+      "..ggccccccccccccgg..",
+      "...gggcccccccccgg...",
+      "....gggggggggggg....",
+      "...dgggggggggggd....",
+      "..dd.gggggggg..dd...",
+      ".dd...gggggg....dd..",
+      ".d.....gggg......d..",
+      "........gg..........",
+      "....................",
+      "....................",
+      "....................",
+    ],
+  },
   boss2: {
     p: { g:'#d88fb0', d:'#a05a7a', w:'#ffffff', k:'#111111', y:'#f4c542', c:'#f7e0a0' },
     r: [
@@ -301,6 +394,7 @@ const NPC_PALETTES = {
   npc_granny:   { h:'#dedede', s:'#efc6a2', k:'#232323', b:'#9a6ba8' },
   npc_girl2:    { h:'#1f1a14', s:'#f7d6b0', k:'#232323', b:'#c8563a' },
   npc_carpenter:{ h:'#4a3520', s:'#dda878', k:'#232323', b:'#6f8a4a' },
+  npc_guard2:   { h:'#2b2b33', s:'#e2b892', k:'#232323', b:'#7a4a8a' },
 };
 
 function hexInt(hex) { return parseInt(hex.slice(1), 16); }
@@ -403,6 +497,17 @@ function makeTextures(scene) {
     g.fillStyle(hexInt('#14141a'), 1); g.fillRect(4, 6, 8, 10);
     g.fillStyle(hexInt('#6e6e76'), 1); g.fillRect(2, 2, 12, 2);
   });
+  // ---- 第三章：钟楼（木地板 + 楼梯，和前两章的沙/石区分开）----
+  makeTile(scene, 't_wood', '#9a7b4a', g => {
+    g.fillStyle(hexInt('#7f6238'), 1); g.fillRect(0, 5, 16, 1); g.fillRect(0, 11, 16, 1);
+    g.fillStyle(hexInt('#b08f5c'), 1); g.fillRect(0, 0, 16, 1); g.fillRect(0, 6, 16, 1);
+    g.fillStyle(hexInt('#6e5430'), 1); g.fillRect(4, 0, 1, 5); g.fillRect(11, 6, 1, 5); g.fillRect(7, 12, 1, 4);
+  });
+  makeTile(scene, 't_stair', '#8a8f9a', g => {
+    g.fillStyle(hexInt('#b6bcc8'), 1); g.fillRect(0, 1, 16, 3); g.fillRect(0, 7, 16, 3); g.fillRect(0, 13, 16, 3);
+    g.fillStyle(hexInt('#6a6f7a'), 1); g.fillRect(0, 4, 16, 1); g.fillRect(0, 10, 16, 1);
+  });
+
   // 迷宫内部地砖
   makeTile(scene, 't_dfloor', '#6b6b78', g => {
     dots(g, '#7a7a88', [[3,3],[9,6],[13,11],[5,13],[11,2]]);

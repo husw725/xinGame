@@ -137,5 +137,52 @@ console.log('\n=== 连着开两次：Phaser 复用场景实例也不能出事 ==
   ok(!err && w.dialog.choiceButtons.length > 0, '重启后选项照样建得出来');
 }
 
+
+console.log('\n=== 跨章委托：状态要能跨传送活下来 ===\n');
+{
+  const { ctx, w, GS } = world(GS => {
+    GS.chapter = 2;
+    GS.flags.boss = false;                       // 第3章魔王还没打
+    GS.chSave = {
+      0: { flags: { intro: true, boss: true, puzzle: true }, chests: [0], locks: [0],
+           rooms: [0, 1, 2], clues: ['code1'], quest: { dodo: 'done' }, searched: {}, pos: null },
+      1: { flags: { intro: true, boss: true, puzzle: true }, chests: [1], locks: [1],
+           rooms: [0, 1, 2], clues: ['c2a'], quest: { step: 'done' }, searched: {}, pos: null },
+    };
+    GS.errand = 'given'; GS.parts = ['glass']; GS.mats = { cog: 5 }; GS.upg = 1;
+  });
+  ctx.__get('loadChapter')(2);
+  // 没打第3章魔王也必须能回前两章 —— 委托要求回去，回不去就是死结
+  const dests = w.travelDests();
+  ok(dests.length === 2 && dests.every(d => d.seen),
+    '第3章没打魔王也能回第1、2章（否则跨章委托做不下去）', dests.map(d => d.i));
+
+  standBesidePortal(w, ctx);
+  w.tryStep('left');
+  ctx.__flush(300);
+  const btn = w.dialog.choiceButtons.find(b => /乘法口诀沙漠/.test(b.txt.text));
+  ok(!!btn, '选单里有第1章');
+  btn.bg.emit('pointerdown');
+  ctx.__flush(2000);
+  ok(GS.chapter === 0, '传送到第1章了', GS.chapter);
+  // 这四个是全局进度，绝不能被章节存档覆盖
+  ok(GS.errand === 'given', '委托状态活着', GS.errand);
+  ok(JSON.stringify(GS.parts) === '["glass"]', '已收零件活着', GS.parts);
+  ok(GS.mats && GS.mats.cog === 5, '齿轮碎片活着', GS.mats);
+  ok(GS.upg === 1, '武器强化等级活着', GS.upg);
+  // 第1章自己的进度也要按存档恢复
+  ok(JSON.stringify(GS.chests) === '[0]', '第1章宝箱进度按存档恢复', GS.chests);
+}
+
+console.log('\n=== 强化材料只在钟楼掉 ===\n');
+{
+  const D = require('./js/data.js');
+  D.CHAPTERS.forEach(C => {
+    const want = C.n === 3;
+    const got = !!C.dropCog;
+    ok(want === got, `第${C.n}章「${C.name}」掉齿轮碎片=${got}（应为 ${want}）`);
+  });
+}
+
 if (bad) { console.log(`\n✗ ${bad} 处问题`); process.exit(1); }
-console.log('\n✅ 传送阵：选项建得出、点得动、退得出，去过的章节进度不丢');
+console.log('\n✅ 传送阵可用可退，章节进度各自保留，跨章委托的状态能活过传送');

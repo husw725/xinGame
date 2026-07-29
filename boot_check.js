@@ -58,3 +58,30 @@ const must = ['Boot', 'Title', 'World', 'Battle', 'Puzzle', 'Candy', 'Clear'];
 const missing = must.filter(k => !keys.includes(k));
 if (missing.length) { console.log('✗ 缺少场景：' + missing.join(', ')); process.exit(1); }
 console.log('✅ 启动自检通过');
+
+// ---- 精灵图合法性（行宽一致 + 字符都在调色板里 + 每个敌人都有图）----
+// 曾经带行尾注释导致正则漏检，也曾把空格当成透明混进像素行
+const artSrc = fs.readFileSync('js/art.js', 'utf8');
+const D = require('./js/data.js');
+let abad = 0, names = [];
+const re = /^  (\w+): \{\n\s*p: \{([^}]*)\},\n\s*r: \[\n([\s\S]*?)\n\s*\],/gm;
+let m;
+while ((m = re.exec(artSrc))) {
+  const [, name, pal, rows] = m;
+  names.push(name);
+  const keys = new Set((pal.match(/(\w+):/g) || []).map(k => k.slice(0, -1)));
+  const rs = rows.split('\n').map(l => (l.match(/"(.*)"/) || [])[1]).filter(v => v !== undefined);
+  const ws = new Set(rs.map(r => r.length));
+  if (ws.size !== 1) { console.log(`✗ 精灵图 ${name} 行宽不一致：${[...ws].join(',')}`); abad++; }
+  const miss = [...new Set(rs.join('').split('').filter(c => c !== '.'))].filter(c => !keys.has(c));
+  if (miss.length) { console.log(`✗ 精灵图 ${name} 用了调色板外的字符：${JSON.stringify(miss)}`); abad++; }
+}
+const missTex = [...new Set(Object.values(D.ENEMIES).map(e => e.tex))].filter(t => !names.includes(t));
+if (missTex.length) { console.log(`✗ 这些敌人没有精灵图：${missTex.join(' ')}`); abad++; }
+// NPC 立绘也要有调色板
+const palNames = [...artSrc.matchAll(/^  (npc_\w+):\s*\{/gm)].map(x => x[1]);
+D.CHAPTERS.forEach(C => Object.values(C.npcs).forEach(npc => {
+  if (!palNames.includes(npc.tex)) { console.log(`✗ 第${C.n}章 ${npc.name} 的立绘 ${npc.tex} 没有调色板`); abad++; }
+}));
+if (abad) { console.log(`✗ 美术资源 ${abad} 处问题`); process.exit(1); }
+console.log(`✓ ${names.length} 个精灵图 + ${palNames.length} 个NPC调色板，全部合法`);

@@ -8,7 +8,8 @@ const path = require('path');
 const vm = require('vm');
 
 const D = require('./js/data.js');
-const BLOCK_CHARS = 'TrwdfkCXBGDWP~';
+// 从 data.js 导入，不再抄一份（抄本漏了新加的矿洞岩壁 M，导致石门形同虚设）
+const BLOCK_CHARS = D.BLOCK_CHARS;
 const src = fs.readFileSync(path.join(__dirname, 'js/game.js'), 'utf8');
 
 let bad = 0;

@@ -127,10 +127,25 @@ check('铜丝拿过了，扫地老人不再标', 1,
   { ...base(1), talked: T2, clues: allClues2, quest: { step: 'done' },
     errand: 'given', parts: ['gear', 'wire'] }, {});
 
+console.log('\n=== 第4章 攒数量委托：进度看得见 ===\n');
+const T4 = allTalked(3);
+const allClues4 = ['c4a', 'c4b', 'c4c', 'c4d'];
+const b4 = (st, n) => ({ ...base(3), talked: T4, clues: allClues4,
+                         quest: { sample: st }, mats: { sample: n },
+                         errand: 'done', parts: ['gear', 'wire', 'glass'] });
+
+check('刚到矿洞（谁都没聊过）', 3, base(3),
+  { 老矿长: '!', 掌秤的师傅: '!', 装袋的婶婶: '!', 迷路的矿工: '!', 小秤: '!',
+    瞎眼的老矿工: '!', 铁头: '!', 洞口的工头: '!', 扛麻袋的小子: '!', 圆盘旁的奶奶: '!' });
+check('接了委托、还没攒够 → ?', 3, b4('taken', 2), { 小秤: '?' });
+check('攒够5块 → 转 !', 3, b4('taken', 5), { 小秤: '!' });
+check('攒过头也算够 → !', 3, b4('taken', 7), { 小秤: '!' });
+check('交完了 → 不标', 3, b4('done', 0), {});
+
 console.log('\n=== 开场说明分给的 NPC（role:info）===\n');
 // 这几位承接了原来开场一口气念完的说明，必须一开局就挂 !，否则孩子不知道该问谁
 // 每一章都要有至少3位承接说明的 NPC
-[0, 1, 2].forEach(ch => {
+[0, 1, 2, 3].forEach(ch => {
   loadChapter(ch);
   const n = Object.values(ctx.__get('NPCS')).filter(x => x.role === 'info').length;
   console.log(`  ${n >= 3 ? '✓' : '✗'} 第${ch + 1}章有 ${n} 位 info NPC`);
@@ -164,7 +179,7 @@ info1.filter(([, n]) => n.lines2).forEach(([id, n]) => {
 
 // 纯服务 NPC 永远不标
 console.log('');
-[0, 1, 2].forEach(ch => {
+[0, 1, 2, 3].forEach(ch => {
   loadChapter(ch);
   Object.assign(ctx.GS, { chapter: ch, clues: [], quest: {}, talked: [], flags: {} });
   const NPCS = ctx.__get('NPCS');
@@ -198,7 +213,7 @@ const introBlock = src.slice(src.indexOf('// --- 开场剧情 ---'), src.indexOf
 
 // 台词不能长到印出框外：对话框每页约 3 行 × 每行约 14 个全角字
 console.log('\n=== info NPC 台词长度（框内放得下）===\n');
-[0, 1, 2].forEach(ch => {
+[0, 1, 2, 3].forEach(ch => {
   loadChapter(ch);
   Object.entries(ctx.__get('NPCS')).filter(([, n]) => n.role === 'info').forEach(([, n]) => {
     [].concat(n.lines || [], n.lines2 || []).forEach(line => {

@@ -2,7 +2,8 @@
 const TILE = 32;
 
 // 图例: T树 .草 -路 r屋顶 w墙 d门 f栅栏 k岩石 ,沙 C仙人掌
-//       c宝箱 p记忆碎片 h隐藏点(需放大镜) D迷宫入口 G石门 X水晶 B魔王 O传送阵 1村长 2商人 3老师
+//       c宝箱 p记忆碎片 h隐藏点(需工具) D机关入口 G石门 X水晶 B魔王 O传送阵 1村长 2商人 3老师
+//       g钟楼木地板 v楼梯 M矿洞岩壁 n矿洞地面
 // 结构：村庄(0-14) → 沙漠主廊 x10-14，左右支路藏宝(15-46) → 迷宫+石门(47-51) → 魔王(52-57)
 const CH1_MAP = [
   "TTTTTTTTTTTTTTTTTTTTTTTTT", // 0
@@ -65,7 +66,7 @@ const CH1_MAP = [
   "kkkkkkkkkkkkkkkkkkkkkkkkk", // 57
 ];
 
-const BLOCK_CHARS = 'TrwdfkCXBGDWP~';   // NPC(1-9) 与 b 由代码另行标记为障碍
+const BLOCK_CHARS = 'TrwdfkCXBGDWPM~';   // NPC 与 b 由代码另行标记为障碍。M=矿洞岩壁
 
 // 数值经 balance_sim.js 验证：等级墙成立，且堆装备无法绕过
 const ENEMIES = {
@@ -74,18 +75,25 @@ const ENEMIES = {
   wraith: { key:'wraith', name:'错别字妖精', tex:'wraith', hp:30, def:3, atk:7,  exp:48, gold:13, qtype:'chinese' },
   dummy:  { key:'dummy',  name:'训练木桩',   tex:'dummy',  hp:40, def:2, atk:0,  exp:0,  gold:0,  qtype:'mult', practice:true },
   revenge:{ key:'revenge',name:'怨念怪',     tex:'revenge',hp:36, def:3, atk:8,  exp:60, gold:16, qtype:'revenge' },
-  boss:   { key:'boss',   name:'口诀骆驼王', tex:'boss',   hp:220,def:8, atk:16, exp:300,gold:150,qtype:'mult', boss:true },
+  boss:   { key:'boss',   name:'口诀骆驼王', tex:'boss',   hp:220,def:8, atk:16, exp:300,gold:150,qtype:'mixed1b', boss:true },
   // --- 第二章 ---
   spider: { key:'spider', name:'除法蜘蛛',   tex:'spider', hp:104,def:8, atk:18, exp:64, gold:16, qtype:'divide' },
   imp2:   { key:'imp2',   name:'余数小鬼',   tex:'imp',    hp:112,def:9, atk:19, exp:70, gold:18, qtype:'remainder' },
   owl:    { key:'owl',    name:'量词猫头鹰', tex:'owl',    hp:100,def:8, atk:17, exp:62, gold:16, qtype:'liangci' },
-  boss2:  { key:'boss2',  name:'分糖巨人',   tex:'boss2',  hp:320,def:19,atk:28, exp:900,gold:420,qtype:'divide', boss:true },
+  boss2:  { key:'boss2',  name:'分糖巨人',   tex:'boss2',  hp:320,def:19,atk:28, exp:900,gold:420,qtype:'mixed2b', boss:true },
   // --- 第三章（数值取自 curve_sim：达标 Lv16 时 我攻49/我防17/我HP150）---
   // 小怪 4 刀砍死、挨 15 下才倒，和前两章手感一致
   cog:    { key:'cog',    name:'齿轮蜘蛛',   tex:'cog',    hp:150,def:12,atk:26, exp:98, gold:24, qtype:'timeunit' },
   bell:   { key:'bell',   name:'走时铜铃',   tex:'bell',   hp:158,def:13,atk:27, exp:104,gold:26, qtype:'timeafter' },
   sand:   { key:'sand',   name:'沙漏懒虫',   tex:'sandw',  hp:146,def:11,atk:28, exp:100,gold:25, qtype:'timespan' },
-  boss3:  { key:'boss3',  name:'时针幽灵',   tex:'boss3',  hp:320,def:34,atk:40, exp:1900,gold:760,qtype:'mixed3', boss:true },
+  flip:   { key:'flip',   name:'颠倒摆',     tex:'flip',   hp:152,def:12,atk:27, exp:102,gold:25, qtype:'antonym' },
+  boss3:  { key:'boss3',  name:'时针幽灵',   tex:'boss3',  hp:320,def:34,atk:40, exp:1900,gold:760,qtype:'mixed3b', boss:true },
+  // --- 第四章（curve_sim ch4：达标 Lv21 我攻64/我防23/我HP190）---
+  ore:    { key:'ore',    name:'矿石傀',     tex:'ore',    hp:196,def:17,atk:35, exp:134,gold:33, qtype:'massunit' },
+  cart:   { key:'cart',   name:'矿车鬼',     tex:'cart',   hp:204,def:18,atk:36, exp:140,gold:35, qtype:'masssum' },
+  bat:    { key:'bat',    name:'秤砣蝠',     tex:'bat',    hp:190,def:16,atk:37, exp:136,gold:34, qtype:'masspick' },
+  echo:   { key:'echo',   name:'回声蝠',     tex:'echo',   hp:198,def:17,atk:36, exp:138,gold:34, qtype:'duoyin' },
+  boss4:  { key:'boss4',  name:'称重河马',   tex:'boss4',  hp:320,def:49,atk:52, exp:3200,gold:1200,qtype:'mixed4b', boss:true },
 };
 
 // ================= 装备（DQ 逻辑：五部位，卖价 75%） =================
@@ -130,6 +138,12 @@ const GEAR = {
   swift_b:  { slot:'boots',  name:'秒针靴',   spd:8,  buy:400, desc:'走得比秒针还快' },
   hourgl:   { slot:'charm',  name:'沙漏护符', int:9,  buy:520, desc:'限时题时间+50%，智力+9', slowQ:0.5 },
   pocketw:  { slot:'charm',  name:'时之怀表', int:14, buy:0,   desc:'答题倒计时+1秒，智力+14', bonusMs:1000, treasure:true },
+  // --- 第四章新增（Lv21 前后买得起）---
+  pick_sw:  { slot:'weapon', name:'矿工镐',   atk:15, buy:700, desc:'一镐下去，石头都裂' },
+  ore_h:    { slot:'head',   name:'矿石盔',   def:9,  buy:0,   desc:'整块矿石凿出来的', treasure:true },
+  plate_s:  { slot:'shield', name:'秤盘盾',   def:11, buy:780, desc:'铜秤盘，又厚又沉' },
+  gramch:   { slot:'charm',  name:'克重香囊', int:11, buy:820, desc:'答错伤害再减10%，智力+11', softenWrong:true },
+  weightc:  { slot:'charm',  name:'砝码护符', int:16, buy:0,   desc:'答对回3点MP，智力+16', mpBonus:3, treasure:true },
 };
 
 // 第1章商店卖什么（宝箱专属的不卖）
@@ -474,8 +488,10 @@ const SHI = [
   { t: '天苍苍，野茫茫，风吹草低见（　）。', a: '牛羊', d: ['马儿','羊群','骆驼'], tip: '《敕勒歌》北朝民歌' },
 ];
 
+// 语文题库的统一出口，subj 在这里打上 —— 混合题型（Boss）才分得清学科
 function bankQ(item) {
-  return { text: item.t, options: shuffle([item.a, ...item.d]), answer: item.a, tip: item.tip || `正确答案是"${item.a}"` };
+  return { subj:'chinese', text: item.t, options: shuffle([item.a, ...item.d]), answer: item.a,
+           tip: item.tip || `正确答案是"${item.a}"` };
 }
 
 function chineseQ() {
@@ -561,6 +577,86 @@ function timeSpanQ() {
   };
 }
 
+// ---- 语文题（跨章复用）----
+// 每一章都要有语文怪。第3章一度三个怪全是数学题，标题写着"数学+语文"
+// 却连着好几章一个语文都没有 —— subject_check.js 现在守着这条。
+
+// 反义词（人教版三上）：和"时间"主题也搭（早↔晚、快↔慢）
+const ANTONYM = [
+  ['早','晚'], ['快','慢'], ['长','短'], ['前','后'], ['多','少'],
+  ['轻','重'], ['大','小'], ['冷','热'], ['高','低'], ['宽','窄'],
+  ['深','浅'], ['粗','细'], ['明','暗'], ['忙','闲'], ['软','硬'],
+];
+function antonymQ() {
+  const pool = ANTONYM;
+  const p = pool[irnd(0, pool.length - 1)];
+  const flip = irnd(0, 1);
+  const q = flip ? p[1] : p[0], a = flip ? p[0] : p[1];
+  const others = pool.flat().filter(c => c !== q && c !== a);
+  const opts = shuffle([a, ...shuffle(others).slice(0, 3)]);
+  return { subj:'chinese', text: `「${q}」的反义词是哪个？`, options: opts, answer: a,
+           tip: `${q} ↔ ${a}。\n意思正好相反的两个字，就是反义词。` };
+}
+
+// 多音字（人教版三上）：一个字两个读音，配着句子选
+const DUOYIN = [
+  { c:'重', a:{ y:'zhòng', s:'这个箱子很重' }, b:{ y:'chóng', s:'重新写一遍' } },
+  { c:'长', a:{ y:'cháng', s:'这条路很长' },   b:{ y:'zhǎng', s:'他长高了' } },
+  { c:'行', a:{ y:'xíng', s:'一行人走过来' },  b:{ y:'háng', s:'写了三行字' } },
+  { c:'空', a:{ y:'kōng', s:'天空很蓝' },      b:{ y:'kòng', s:'留一个空格' } },
+  { c:'发', a:{ y:'fā', s:'发出声音' },        b:{ y:'fà', s:'头发很黑' } },
+  { c:'转', a:{ y:'zhuàn', s:'轮子在转' },     b:{ y:'zhuǎn', s:'向左转弯' } },
+  { c:'着', a:{ y:'zhe', s:'他笑着说' },       b:{ y:'zháo', s:'着火了' } },
+  { c:'量', a:{ y:'liàng', s:'重量是多少' },   b:{ y:'liáng', s:'量一量有多长' } },
+];
+function duoyinQ() {
+  const d = DUOYIN[irnd(0, DUOYIN.length - 1)];
+  const pickA = irnd(0, 1);
+  const use = pickA ? d.a : d.b, other = pickA ? d.b : d.a;
+  const fakes = DUOYIN.filter(x => x !== d).flatMap(x => [x.a.y, x.b.y]);
+  const opts = shuffle([use.y, other.y, ...shuffle(fakes).slice(0, 2)]);
+  return { subj:'chinese', text: `「${use.s}」\n里的「${d.c}」读什么？`, options: opts, answer: use.y,
+           tip: `${use.s} → ${d.c} 读 ${use.y}。\n（${other.s} 里读 ${other.y}）` };
+}
+
+// ---- 第4章：克与千克（人教版三上）----
+// 千克↔克 换算。整千克进出，孩子练的是"1千克=1000克"这一条
+function massUnitQ() {
+  const kind = irnd(0, 2);
+  if (kind === 0) { const k = irnd(2, 9); return { text: `${k} 千克 = ? 克`, options: numOptions(k * 1000), answer: String(k * 1000), tip: `1 千克 = 1000 克，所以 ${k} 千克 = 1000×${k} = ${k * 1000} 克` }; }
+  if (kind === 1) { const k = irnd(2, 9); return { text: `${k * 1000} 克 = ? 千克`, options: numOptions(k), answer: String(k), tip: `1000 克是 1 千克，${k * 1000} 里有 ${k} 个 1000，所以是 ${k} 千克` }; }
+  const k = irnd(1, 8), g = irnd(1, 9) * 100;
+  return { text: `${k} 千克 ${g} 克 = ? 克`, options: numOptions(k * 1000 + g), answer: String(k * 1000 + g),
+           tip: `${k} 千克 = ${k * 1000} 克，再加 ${g} 克 = ${k * 1000 + g} 克` };
+}
+
+// 该用克还是千克 —— 单位感比换算更重要，这题不算数
+const MASS_THINGS = [
+  { n:'一枚一元硬币', u:'克' }, { n:'一颗鸡蛋', u:'克' }, { n:'一支铅笔', u:'克' },
+  { n:'一本课本', u:'克' }, { n:'一片羽毛', u:'克' }, { n:'一块橡皮', u:'克' },
+  { n:'一个小学生', u:'千克' }, { n:'一袋大米', u:'千克' }, { n:'一头猪', u:'千克' },
+  { n:'一辆自行车', u:'千克' }, { n:'一台电视', u:'千克' }, { n:'一只西瓜', u:'千克' },
+];
+function massPickQ() {
+  const t = MASS_THINGS[irnd(0, MASS_THINGS.length - 1)];
+  return { text: `${t.n}\n有多重？用哪个单位合适？`, options: shuffle(['克', '千克', '米', '分钟']), answer: t.u,
+           tip: t.u === '克' ? `${t.n}很轻，用【克】。\n很轻的东西用克，重的用千克。`
+                             : `${t.n}比较重，用【千克】。\n1 千克 = 1000 克。` };
+}
+
+// 凑够整千克还差多少 / 两袋加起来多重
+function massSumQ() {
+  if (irnd(0, 1)) {
+    const have = irnd(1, 9) * 100;
+    return { text: `一袋 ${have} 克，\n再装多少克就正好 1 千克？`, options: numOptions(1000 - have), answer: String(1000 - have),
+             tip: `1 千克 = 1000 克，1000 − ${have} = ${1000 - have} 克` };
+  }
+  const a = irnd(1, 8) * 100, b = irnd(1, 8) * 100;
+  return { text: `${a} 克 + ${b} 克 = ? 克`, options: numOptions(a + b), answer: String(a + b),
+           tip: a + b >= 1000 ? `${a}+${b}=${a + b} 克，\n也就是 ${Math.floor((a + b) / 1000)} 千克 ${(a + b) % 1000} 克`
+                              : `${a}+${b}=${a + b} 克，还不到 1 千克` };
+}
+
 function remainderQ() {
   const b = irnd(3, 9);
   const q = irnd(2, 8);
@@ -572,11 +668,31 @@ function remainderQ() {
 
 function liangciQ() {
   const item = LIANG[irnd(0, LIANG.length - 1)];
-  return { text: item.t, options: shuffle([item.a, ...item.d]), answer: item.a,
+  return { subj:'chinese', text: item.t, options: shuffle([item.a, ...item.d]), answer: item.a,
            tip: `应该说「${item.t.replace('（　）', item.a)}」` };
 }
 
+// 题型属于数学还是语文。原来是在战斗里用 /[+−×]/ 猜题面 ——
+// 时间题"3 时 = ? 分"没有运算符，被判成语文，字典护符会错误加成。
+// 改成查表，题目自带 subj，不再靠猜。
+const QSUBJ = {
+  mult:'math', addsub:'math', divide:'math', remainder:'math', balance:'math',
+  timeunit:'math', timeafter:'math', timespan:'math',
+  massunit:'math', masspick:'math', masssum:'math',
+  chinese:'chinese', liangci:'chinese', antonym:'chinese', duoyin:'chinese',
+  mixed:'mixed', mixed2:'mixed', mixed3:'math', mixed3b:'mixed', mixed4:'math', mixed4b:'mixed',
+  mixed1b:'mixed', mixed2b:'mixed', mixedmath:'math', revenge:'mixed',
+};
+
 function getQuestion(type) {
+  const q = getQuestionRaw(type);
+  if (!q.subj) q.subj = QSUBJ[type] === 'chinese' ? 'chinese' : 'math';
+  return q;
+}
+
+function getQuestionRaw(type) {
+  if (type === 'antonym')   return antonymQ();
+  if (type === 'duoyin')    return duoyinQ();
   if (type === 'balance')   return balanceQ();
   if (type === 'divide')    return divideQ();
   if (type === 'remainder') return remainderQ();
@@ -585,7 +701,15 @@ function getQuestion(type) {
   if (type === 'timeafter') return timeAfterQ();
   if (type === 'timespan')  return timeSpanQ();
   if (type === 'mixed3')    return [timeUnitQ, timeAfterQ, timeSpanQ][irnd(0, 2)]();
+  if (type === 'mixed3b')   return [timeUnitQ, timeAfterQ, timeSpanQ, antonymQ][irnd(0, 3)]();
+  if (type === 'massunit')  return massUnitQ();
+  if (type === 'masspick')  return massPickQ();
+  if (type === 'masssum')   return massSumQ();
+  if (type === 'mixed4')    return [massUnitQ, massPickQ, massSumQ][irnd(0, 2)]();
+  if (type === 'mixed4b')   return [massUnitQ, massPickQ, massSumQ, duoyinQ][irnd(0, 3)]();
   if (type === 'mixed2')    return [divideQ, remainderQ, liangciQ][irnd(0, 2)]();
+  if (type === 'mixed1b')   return [multQ, multQ, chineseQ][irnd(0, 2)]();
+  if (type === 'mixed2b')   return [divideQ, remainderQ, liangciQ][irnd(0, 2)]();
   if (type === 'mixed') type = ['mult', 'addsub', 'chinese'][irnd(0, 2)];
   if (type === 'mult') return multQ();
   if (type === 'addsub') return addsubQ();
@@ -719,6 +843,56 @@ const CH3_MAP = _ch3map();
 
 const CH3_START   = { x:12, y:11 };
 const CH3_REVENGE = { x:12, y:14 };
+
+// ---- 第4章：砝码矿洞 ----
+// 拓扑第四种：树状分支坑道。一条主竖井，左右伸出长短不等的支洞，
+// 支洞尽头才是东西。前三章是直廊/环廊/塔层，这里是"岔路多、会走错"。
+function _ch4map() {
+  const W = 25, H = 60, g = Array.from({ length: H }, () => Array(W).fill('M'));
+  const put = (x, y, c) => { if (y >= 0 && y < H && x >= 0 && x < W) g[y][x] = c; };
+  const fill = (x1, y1, x2, y2, c) => { for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) put(x, y, c); };
+
+  // --- 洞口的矿工营地（0~12）---
+  fill(1, 1, 23, 12, 'n');
+  fill(2, 2, 5, 4, 'r'); fill(2, 3, 5, 4, 'w'); put(3, 4, 'd');        // 矿工棚
+  fill(18, 2, 21, 4, 'r'); fill(18, 3, 21, 4, 'w'); put(20, 4, 'd');   // 秤房
+  fill(2, 7, 5, 9, 'r'); fill(2, 8, 5, 9, 'w'); put(3, 9, 'd');        // 学堂
+  put(7, 6, '4'); put(16, 6, '5'); put(9, 10, '6'); put(19, 9, '7'); put(6, 11, '8');
+  put(13, 6, 'E'); put(17, 11, 'H'); put(21, 7, 'J');
+  put(11, 12, 'O');                                                     // 传送圆盘
+
+  // --- 主竖井：x=12，从洞口一直到矿底 ---
+  fill(11, 13, 13, 55, 'n');
+
+  // --- 左右支洞：长短不一，尽头放东西 ---
+  // [y, 方向, 长度]
+  const branches = [
+    [17, -1, 8], [21, 1, 9], [26, -1, 6], [31, 1, 7],
+    [36, -1, 9], [41, 1, 6], [46, -1, 7], [50, 1, 8],
+  ];
+  branches.forEach(([y, dir, len]) => {
+    const x1 = dir < 0 ? 11 - len : 14, x2 = dir < 0 ? 10 : 13 + len;
+    fill(x1, y, x2, y + 1, 'n');
+  });
+  // 支洞尽头的内容
+  put(3,  17, 'c'); put(22, 21, 'p'); put(5,  26, 'h'); put(21, 31, 'c');
+  put(2,  36, 'p'); put(20, 41, 'h'); put(4,  46, 'h'); put(22, 50, 'c');
+  put(18, 22, '9');                                                     // 支洞里的迷路矿工（右支洞 y=21~22）
+
+  // --- 矿底：天平机关入口 + 石门 ---
+  fill(4, 52, 20, 55, 'n');
+  put(12, 51, 'D');            // 天平机关入口（在竖井上，进矿底之前）
+  // y=56 整行是岩壁，只有 x=8 这一格是门 —— 门必须是唯一通路，否则谜题白做
+  put(8, 56, 'G');
+  fill(3, 57, 21, 59, 'n');    // 魔王厅
+  put(12, 57, 'X'); put(12, 58, 'B');
+
+  return g.map(r => r.join(''));
+}
+const CH4_MAP = _ch4map();
+
+const CH4_START   = { x:12, y:11 };
+const CH4_REVENGE = { x:12, y:14 };
 
 const CH2_START   = { x:12, y:11 };
 const CH2_REVENGE = { x:12, y:15 };
@@ -873,6 +1047,7 @@ const CH3_SPAWNS = [
   { k:'cog',  x:8,  y:39 }, { k:'bell', x:18, y:40 },      // 四层
   { k:'sand', x:11, y:46 }, { k:'cog',  x:17, y:47 },      // 五层
   { k:'bell', x:9,  y:53 }, { k:'sand', x:20, y:54 },      // 六层
+  { k:'flip', x:13, y:19 }, { k:'flip', x:11, y:40 },      // 颠倒摆（语文·反义词）
 ];
 
 // 日记第 17–24 页：他开始"追不上"——为第6章的身份揭示继续铺垫，仍不点名
@@ -1002,6 +1177,139 @@ const CH3_CLOCK = [
     reward:{ kind:'gear', key:'swift_b' } },
 ];
 
+// ================= 第四章数据 =================
+const CH4_SPAWNS = [
+  { k:'ore',  x:12, y:16 }, { k:'bat',  x:6,  y:17 },
+  { k:'cart', x:18, y:21 }, { k:'ore',  x:12, y:24 },
+  { k:'bat',  x:8,  y:26 }, { k:'cart', x:17, y:31 },
+  { k:'ore',  x:12, y:34 }, { k:'bat',  x:5,  y:36 },
+  { k:'cart', x:16, y:41 }, { k:'ore',  x:12, y:44 },
+  { k:'bat',  x:7,  y:46 }, { k:'cart', x:18, y:50 },
+  { k:'echo', x:12, y:29 }, { k:'echo', x:12, y:48 },   // 回声蝠（语文·多音字）
+];
+
+// 日记第 25–32 页：他开始"称量自己"——为第6章的身份揭示铺垫，仍不点名
+const CH4_FRAGS = [
+  { where:'左支洞', text:'第二十五页：\n「先生把我们的本子摞成一叠，\n我的最薄。」' },
+  { where:'右支洞', text:'第二十六页：\n「娘说我瘦。\n我说我不吃了。」' },
+  { where:'秤房',   text:'第二十七页：\n「一样的两个人，\n为什么有一个就是轻的。」' },
+  { where:'天平第一间', text:'第二十八页：\n「我把石头装进书包。\n这样称起来就重了。」' },
+  { where:'宝箱里', text:'第二十九页：\n「先生看出来了。\n他没说，把石头拿出来了。」' },
+  { where:'隐藏处', text:'第三十页：\n「他说，本子薄不要紧。\n我说要紧。」' },
+  { where:'隐藏处', text:'第三十一页：\n「我想知道我到底有多重。」' },
+  { where:'隐藏处', text:'第三十二页：\n「称不出来的。\n秤上没有那个刻度。」' },
+];
+
+const CH4_NPCS = {
+  '1': { name:'老矿长',   tex:'npc_elder',    role:'elder' },
+  '2': { name:'商人',     tex:'npc_merchant', role:'shop' },
+  '3': { name:'老师',     tex:'npc_teacher',  role:'teacher' },
+  // 线索机制第四种：三段重量相加（不是凑口令、不是真假话、不是互相印证）
+  '4': { name:'掌秤的师傅', tex:'npc_smith',  role:'clue', clue:'c4a' },
+  '5': { name:'装袋的婶婶', tex:'npc_aunt',   role:'clue', clue:'c4b' },
+  '9': { name:'迷路的矿工', tex:'npc_traveler',role:'clue', clue:'c4c' },
+  '6': { name:'小秤',     tex:'npc_girl',     role:'quest' },
+  '7': { name:'瞎眼的老矿工', tex:'npc_grandpa', role:'lore' },
+  '8': { name:'铁头',     tex:'npc_boy',      role:'chat' },
+  'E': { name:'洞口的工头', tex:'npc_guard', role:'info',
+    lines: ['矿洞里岔道多，别乱钻。',
+            '支洞有长有短，\n尽头才有东西。',
+            '走错了就退回主井再下。'],
+    lines2: ['河马走了，矿又能开了。'] },
+  'H': { name:'扛麻袋的小子', tex:'npc_kid', role:'info',
+    lines: ['这儿的怪都跟"多重"有关。',
+            '一千克等于一千克，\n这条记牢就不怕。',
+            '很轻的用克，重的用千克。'],
+    lines2: ['我现在装袋能估个八九不离十了。'] },
+  'J': { name:'圆盘旁的奶奶', tex:'npc_granny', role:'info',
+    lines: ['圆盘还是那个用法。',
+            '前面三个地方，\n哪儿的纸片没捡完就回去。'],
+    lines2: ['四个地方都通了。'] },
+};
+
+const CH4_CLUES = {
+  c4a: { lock:'weigh', from:'掌秤的师傅', ask:'那口箱子压着三袋矿。\n我这袋是 400 克。',
+         note:'掌秤师傅：第一袋 400 克' },
+  c4b: { lock:'weigh', from:'装袋的婶婶', ask:'我装的那袋比他的重 200 克。',
+         note:'装袋婶婶：第二袋比第一袋重 200 克 → 600 克' },
+  c4c: { lock:'weigh', from:'迷路的矿工', ask:'第三袋我记得清 ——\n正好半千克。',
+         note:'迷路矿工：第三袋 = 半千克 = 500 克' },
+  c4d: { lock:'lore',  from:'瞎眼的老矿工', ask:'岩缝里卡着东西。\n我摸得着，掏不出来。',
+         note:'岩缝藏有东西（拿到砝码再回来）' },
+};
+
+// 称重锁：三袋加起来多少克。400 + 600 + 500 = 1500 克 = 1千克500克
+const CH4_WEIGHLOCK = {
+  answer: 1500,
+  candidates: [1300, 1500, 1900],
+  explain: '第一袋 400 克。\n' +
+           '第二袋比它重 200 克 → 600 克。\n' +
+           '第三袋半千克 → 500 克。\n' +
+           '400 + 600 + 500 = 1500 克，\n也就是 1 千克 500 克。',
+};
+
+const CH4_LOCKS = [
+  { kind:'calc',  icon:'🔢', hint:'箱盖上刻着一道千克换算题' },
+  { kind:'unit',  icon:'⚖️', hint:'箱盖上画着一样东西，\n问你该用克还是千克。' },
+  { kind:'weigh', icon:'🧮', hint:'箱盖上刻着：\n「三袋矿一共多少克？」\n营地里三个人各知道一袋。', clues:['c4a','c4b','c4c'] },
+];
+
+const CH4_CHESTS = [
+  { kind:'gear', key:'ore_h',   msg:'找到了【矿石盔】！' },
+  { kind:'frag', idx:4,         msg:'箱子里是一页发黄的纸……' },
+  { kind:'gear', key:'weightc', msg:'找到了传说中的【砝码护符】！\n（商店买不到，答对回3点MP）' },
+];
+
+const CH4_HOUSES = {
+  '3,4':  { name:'矿工棚', owner:'1', rows:[
+    "WWWWWWWWW",
+    "WBFFFFFBW",
+    "WFFFFFFFW",
+    "WtFFNFFtW",
+    "WFFFFFFFW",
+    "WBFFFFFBW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '20,4': { name:'秤房', owner:'2', rows:[
+    "WWWWWWWWW",
+    "WuuuuuuuW",
+    "WFFFFFFFW",
+    "WtFFNFFtW",
+    "WFFFFFFFW",
+    "WuuFFFuuW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '3,9':  { name:'矿洞学堂', owner:'3', rows:[
+    "WWWWWWWWW",
+    "WFtttttFW",
+    "WFFFFFFFW",
+    "WuFFNFFuW",
+    "WFFFFFFFW",
+    "WFtttttFW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+};
+
+const CH4_SHOP = ['pick_sw','clock_sw','ore_h','glass_s','plate_s','swift_b','hourgl','gramch'];
+
+// ---- 天平机关（第4章招牌谜题）----
+// 左盘固定重量，右边给一堆砝码，选出组合让天平平衡。
+// total 用克表示，砝码也用克 —— 换算就发生在"1千克那块砝码顶几个200克"里
+const CH4_BALANCE = [
+  { name:'第一间 · 先配平', target:700, weights:[500, 200, 100, 50],
+    riddle:'左盘：一袋 700 克的矿。',
+    hint:'500 + 200 = 700。\n两块就够了。',
+    reward:{ kind:'frag', idx:3 } },
+  { name:'第二间 · 千克换克', target:1200, weights:[1000, 500, 200, 100],
+    riddle:'左盘：一袋 1 千克 200 克的矿。',
+    hint:'1 千克 = 1000 克，\n所以要 1000 + 200 = 1200 克。',
+    reward:{ kind:'gold', val:600 } },
+  { name:'第三间 · 想清楚再放', target:1850, weights:[1000, 500, 200, 100, 50],
+    riddle:'左盘：一袋 1 千克 850 克的矿。',
+    hint:'1850 = 1000 + 500 + 200 + 100 + 50。\n五块全用上。',
+    reward:{ kind:'gear', key:'plate_s' } },
+];
+
 // ============================================================
 // 章节表：game.js 通过 loadChapter() 切换，其余代码无需改动
 // ============================================================
@@ -1051,7 +1359,7 @@ const CHAPTERS = [
     puzzle:{ kind:'clock', rooms:CH3_CLOCK },
     bossTile:{ x:12, y:60 }, crystalTile:{ x:12, y:59 },
     hiddenBase:5, hiddenTool:'watch', hiddenToolName:'时之怀表',
-    dex:['cog','bell','sand','revenge','boss3'],
+    dex:['cog','bell','sand','flip','revenge','boss3'],
     dropCog:true,   // 只有钟楼的怪掉齿轮碎片（回第1章强化武器的料）
     bossTaunt:'嗒、嗒、嗒……\n你也迟到了。\n迟到的人，我不放过去。',
     hiddenLocked:'齿轮缝里好像塞着什么……\n手指抠不出来。',
@@ -1069,6 +1377,29 @@ const CHAPTERS = [
                  '远处传来齿轮转动的声音，\n一下，又一下。',
                  '一座六层高的塔立在眼前 ——\n【时光钟楼】。',
                  '塔顶的大钟停着。\n指针不动。'] },
+  { n:4, name:'砝码矿洞', recLv:21, tool:'scale', toolName:'⚖️砝码', boss:'boss4',
+    map:CH4_MAP, start:CH4_START, revenge:CH4_REVENGE, spawns:CH4_SPAWNS,
+    frags:CH4_FRAGS, npcs:CH4_NPCS, clues:CH4_CLUES, locks:CH4_LOCKS,
+    chests:CH4_CHESTS, houses:CH4_HOUSES, shop:CH4_SHOP,
+    puzzle:{ kind:'balance', rooms:CH4_BALANCE },
+    bossTile:{ x:12, y:58 }, crystalTile:{ x:12, y:57 },
+    hiddenBase:5, hiddenTool:'scale', hiddenToolName:'砝码',
+    dex:['ore','cart','bat','echo','revenge','boss4'],
+    dropSample:true,   // 小秤的委托：矿洞的怪掉矿石样本
+    bossTaunt:'哼……你几斤几两，\n上秤我就知道。\n称不够的，过不去。',
+    hiddenLocked:'岩缝里好像卡着什么……\n手掏不进去。',
+    toolHint:'「矿洞的岩缝里卡着东西。\n用砝码的挂钩能勾出来。」',
+    gateHint:['一扇石门，门上嵌着一架大铜天平。',
+              '两边不平，门就不动——\n矿底的秤室里应该有机关。'],
+    elderWhere:'矿底的称重河马守着第四颗水晶。',
+    elderSide:'支洞有长有短，尽头才有东西。\n别嫌绕，绕到底才有货。',
+    elderTease:['再往东是一片老矿洞。',
+                '洞里住进来一头河马，\n什么都要过秤。',
+                '它说称不够的东西不许运出去，\n矿就这么停了。'],
+    travelBeats:['你顺着水晶往东走。',
+                 '木板路变成了碎石坡。',
+                 '空气里有铁锈味，\n远处传来矿车的咔嗒声。',
+                 '一个黑黢黢的洞口张在山壁上 ——\n【砝码矿洞】。'] },
 ];
 
 // 当前章节的数据（game.js 直接用这些名字）
@@ -1100,8 +1431,8 @@ loadChapter(0);
 
 if (typeof module !== 'undefined') {
   module.exports = { ENEMIES, GEAR, SLOTS, SPELLS, spellsAt,
-                     TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot,
-                     CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, CH3_CLOCK, CH3_CLOCKLOCK,
+                     TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot, BLOCK_CHARS,
+                     CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, CH3_CLOCK, CH3_CLOCKLOCK, CH4_BALANCE, CH4_WEIGHLOCK,
                      fragGlobal, fragText, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
   // 下面这些会被 loadChapter 整个换掉，所以必须导出成 getter。

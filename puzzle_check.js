@@ -154,7 +154,8 @@ console.log('\n=== 各章地图连通性 ===\n');
 let rbad = 0;
 D.CHAPTERS.forEach((C, ci) => {
   D.loadChapter(ci);
-  const M = D.MAP, MW = D.MAPW, MH = D.MAPH, BC = 'TrwdfkCXBGDWP~';
+    // BLOCK_CHARS 从 data.js 导入 —— 抄一份的话，data 里加了新墙这里不会跟着变
+  const M = D.MAP, MW = D.MAPW, MH = D.MAPH, BC = D.BLOCK_CHARS;
   const walk = gateOpen => {
     const blk = (x, y) => (M[y][x] === 'G' ? !gateOpen : BC.includes(M[y][x]));
     const st = D.PLAYER_START, seen = new Set([st.x + ',' + st.y]), q = [st];
@@ -193,3 +194,35 @@ D.CHAPTERS.forEach((C, ci) => {
 });
 if (rbad) { console.log(`\n✗ 连通性 ${rbad} 处问题`); process.exit(1); }
 console.log('\n✅ 各章地图全部连通，没有拿不到的东西');
+
+// ---- 天平机关（第4章）----
+// 砝码只能整块放/不放，所以目标重量必须能被某个子集正好凑出来（子集和穷举）
+const { CH4_BALANCE } = require('./js/data.js');
+console.log('\n=== 天平机关可解性验证 ===\n');
+let wbad = 0;
+CH4_BALANCE.forEach((lv, i) => {
+  const subsets = [];
+  const N = lv.weights.length;
+  for (let m = 1; m < (1 << N); m++) {
+    let sum = 0;
+    for (let b = 0; b < N; b++) if (m & (1 << b)) sum += lv.weights[b];
+    if (sum === lv.target) subsets.push(m);
+  }
+  const ok = subsets.length > 0;
+  const show = m => lv.weights.filter((_, b) => m & (1 << b)).join('+');
+  console.log(`${ok ? '✓' : '✗'} 第${i + 1}间「${lv.name}」 目标 ${lv.target} 克`
+    + (ok ? `，${subsets.length} 种配平法，例如 ${show(subsets[0])}` : '，凑不出来！'));
+  if (!ok) wbad++;
+  const used = ok ? lv.weights.filter((_, b) => subsets[0] & (1 << b)).length : 0;
+  if (ok && used > 5) { console.log(`    ✗ 要放 ${used} 块砝码，屏幕摆不下`); wbad++; }
+  if (lv.weights.length > 6) { console.log('    ✗ 砝码超过6块，按钮排不开'); wbad++; }
+  if (!lv.hint || !lv.riddle || !lv.reward) { console.log('    ✗ 缺提示/题面/奖励'); wbad++; }
+  // 每块砝码都得是整十整百，孩子才算得动
+  lv.weights.forEach(g => { if (g % 50 !== 0) { console.log(`    ✗ 砝码 ${g} 克不是 50 的倍数`); wbad++; } });
+});
+// 难度递增：第一间不涉及千克，后面要跨千克
+if (CH4_BALANCE[0].target >= 1000) { console.log('✗ 第一间应该在 1000 克以内（先教配平）'); wbad++; }
+if (CH4_BALANCE[CH4_BALANCE.length - 1].target < 1000) { console.log('✗ 最后一间应该超过 1 千克（练换算）'); wbad++; }
+if (!CH4_BALANCE.some(l => l.weights.includes(1000))) { console.log('✗ 至少要有一块 1 千克砝码，否则学不到换算'); wbad++; }
+if (wbad) { console.log(`\n✗ 天平机关 ${wbad} 处问题`); process.exit(1); }
+console.log('\n✅ 天平机关三间都配得平，难度递增（克 → 跨千克 → 多块组合）');

@@ -300,6 +300,143 @@ const SPRITES = {
       "................",
     ],
   },
+  // 颠倒摆：上下颠倒的钟摆，脸也是倒的（语文·反义词）
+  flip: {
+    p: { v:'#7a6ac8', l:'#a8a0e8', w:'#ffffff', k:'#111111', y:'#f4c542' },
+    r: [
+      "................",
+      "......vvvv......",
+      ".....vvvvvv.....",
+      "....vvvvvvvv....",
+      "...vvllllllvv...",
+      "...vllyyyyllv...",
+      "..vvllllllllvv..",
+      "..vllwkllwkllv..",
+      "..vllllllllllv..",
+      "..vvllllllllvv..",
+      "...vvllllllvv...",
+      "....vvvvvvvv....",
+      ".....vvvvvv.....",
+      "......vvvv......",
+      ".......vv.......",
+      "......yyyy......",
+    ],
+  },
+  // ---- 第四章：矿洞的四种怪 ----
+  // 矿石傀：一坨会走的矿石
+  ore: {
+    p: { r:'#7a6a58', l:'#9c8a70', y:'#c8a03a', w:'#ffffff', k:'#111111' },
+    r: [
+      "................",
+      "....rrrrrrr.....",
+      "...rrrrrrrrr....",
+      "..rrllllllrrr...",
+      "..rlllyyylllrr..",
+      "..rllwkllwkllr..",
+      "..rllllllllllr..",
+      "..rllyylllyyllr.",
+      "..rrllllllllrr..",
+      "...rrrrrrrrrr...",
+      "...rr..rr..rr...",
+      "..rrr..rr..rrr..",
+      "..rr...rr...rr..",
+      ".rrr...rr...rrr.",
+      "................",
+      "................",
+    ],
+  },
+  // 矿车鬼：一辆翻着的矿车
+  cart: {
+    p: { m:'#5e5048', b:'#8a7a5a', w:'#ffffff', k:'#111111', y:'#c8a03a' },
+    r: [
+      "................",
+      "................",
+      "..mmmmmmmmmmmm..",
+      "..mbbbbbbbbbbm..",
+      "..mbwkbbbbwkbm..",
+      "..mbbbbbbbbbbm..",
+      "..mbbyyyyyybbm..",
+      "..mbbbbbbbbbbm..",
+      "..mmmmmmmmmmmm..",
+      "...m........m...",
+      "..yyy......yyy..",
+      ".yyyyy....yyyyy.",
+      ".yyyyy....yyyyy.",
+      "..yyy......yyy..",
+      "................",
+      "................",
+    ],
+  },
+  // 秤砣蝠：挂着秤砣的蝙蝠
+  bat: {
+    p: { d:'#4a4a56', l:'#7a7a8a', w:'#ffffff', k:'#111111', y:'#c8a03a' },
+    r: [
+      "................",
+      "d..............d",
+      "dd............dd",
+      "ddd..dddddd..ddd",
+      "dddddllllllddddd",
+      "ddddlwkllwkldddd",
+      ".dddllllllllddd.",
+      "..ddlllyyllldd..",
+      "...ddllllllldd..",
+      "....dddddddd....",
+      "......dyyd......",
+      ".....yyyyyy.....",
+      ".....yyyyyy.....",
+      "......yyyy......",
+      "................",
+      "................",
+    ],
+  },
+  // 回声蝠：张着大嘴，声波纹（语文·多音字）
+  echo: {
+    p: { v:'#6a5a8a', l:'#9a8ac0', w:'#ffffff', k:'#111111', y:'#f4c542' },
+    r: [
+      "................",
+      "v..............v",
+      "vv...vvvvvv...vv",
+      "vvv.vllllllv.vvv",
+      "vvvvvlwkkwlvvvvv",
+      ".vvvvllllllvvvv.",
+      "..vvvlllllllvv..",
+      "...vvyyyyyyvv...",
+      "...vvykkkkyvv...",
+      "....vyyyyyyv....",
+      ".....vvvvvv.....",
+      "..y.y......y.y..",
+      ".y...y....y...y.",
+      "y.....y..y.....y",
+      "................",
+      "................",
+    ],
+  },
+  // 称重河马：坐在秤上的大河马
+  boss4: {
+    p: { g:'#a08ab0', d:'#6e5a80', w:'#ffffff', k:'#111111', y:'#c8a03a', c:'#cfc0dc' },
+    r: [
+      "....gggggggggg......",
+      "...gggggggggggg.....",
+      "..gggggggggggggg....",
+      "..ggwkgggggwkggg....",
+      "..gggggggggggggg....",
+      "..ggcccccccccggg....",
+      "..gccdddddddccgg....",
+      "..gccdddddddccgg....",
+      "..ggcccccccccggg....",
+      "...gggggggggggg.....",
+      "..gggggggggggggg....",
+      ".gggggggggggggggg...",
+      ".gggggggggggggggg...",
+      ".ggg..gggggg..ggg...",
+      ".ggg..gggggg..ggg...",
+      ".ddd..dddddd..ddd...",
+      "yyyyyyyyyyyyyyyyyy..",
+      "yyyyyyyyyyyyyyyyyy..",
+      "....yy........yy....",
+      "....................",
+    ],
+  },
   // 时针幽灵：飘着的钟面，指针就是手
   boss3: {
     p: { g:'#9fb8e8', d:'#5a6ea8', w:'#ffffff', k:'#111111', y:'#f4c542', c:'#e8eeff' },
@@ -395,6 +532,7 @@ const NPC_PALETTES = {
   npc_girl2:    { h:'#1f1a14', s:'#f7d6b0', k:'#232323', b:'#c8563a' },
   npc_carpenter:{ h:'#4a3520', s:'#dda878', k:'#232323', b:'#6f8a4a' },
   npc_guard2:   { h:'#2b2b33', s:'#e2b892', k:'#232323', b:'#7a4a8a' },
+  npc_miner:    { h:'#3a2f22', s:'#d8a878', k:'#232323', b:'#8a7a4a' },
 };
 
 function hexInt(hex) { return parseInt(hex.slice(1), 16); }
@@ -506,6 +644,17 @@ function makeTextures(scene) {
   makeTile(scene, 't_stair', '#8a8f9a', g => {
     g.fillStyle(hexInt('#b6bcc8'), 1); g.fillRect(0, 1, 16, 3); g.fillRect(0, 7, 16, 3); g.fillRect(0, 13, 16, 3);
     g.fillStyle(hexInt('#6a6f7a'), 1); g.fillRect(0, 4, 16, 1); g.fillRect(0, 10, 16, 1);
+  });
+
+  // ---- 第四章：矿洞（岩壁 + 碎石地面）----
+  makeTile(scene, 't_mwall', '#4a3f38', g => {
+    g.fillStyle(hexInt('#5e5048'), 1); g.fillRect(1, 1, 6, 5); g.fillRect(9, 3, 6, 6); g.fillRect(2, 9, 5, 6);
+    g.fillStyle(hexInt('#37302a'), 1); g.fillRect(0, 7, 16, 1); g.fillRect(8, 0, 1, 16);
+    g.fillStyle(hexInt('#8a7a5a'), 1); g.fillRect(11, 11, 2, 2);   // 矿脉
+  });
+  makeTile(scene, 't_mfloor', '#7a6a58', g => {
+    dots(g, '#93826c', [[2,3],[7,5],[12,2],[4,11],[10,13],[14,8]]);
+    dots(g, '#5f5245', [[5,8],[9,9],[13,4],[3,14]]);
   });
 
   // 迷宫内部地砖

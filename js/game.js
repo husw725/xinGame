@@ -426,7 +426,7 @@ class World extends Phaser.Scene {
     // --- 地图 ---
     const TILE_TEX = { '.': 't_grass', ',': 't_sand', '-': 't_path', 'T': 't_tree', 'C': 't_cactus', 'k': 't_rock', 'f': 't_fence', 'r': 't_roof', 'w': 't_wall', 'd': 't_door',
                        's': 't_stone', 'W': 't_swall', 'P': 't_pillar', '~': 't_water',
-                       'g': 't_wood', 'v': 't_stair' };
+                       'g': 't_wood', 'v': 't_stair', 'M': 't_mwall', 'n': 't_mfloor' };
     this.chests = {};    // "x,y" -> 编号
     this.frags = {};     // "x,y" -> 碎片编号
     this.hidden = {};    // "x,y" -> 碎片编号（需放大镜）
@@ -455,7 +455,8 @@ class World extends Phaser.Scene {
         }
         let tex = TILE_TEX[ch];
         if (!tex) tex = GS.chapter === 0 ? (y < 15 ? 't_grass' : 't_sand')
-                       : GS.chapter === 2 ? 't_wood' : 't_stone';
+                       : GS.chapter === 2 ? 't_wood'
+                       : GS.chapter === 3 ? 't_mfloor' : 't_stone';
         this.add.image(x * TILE + 16, y * TILE + 16, tex).setScale(2);
         if (BLOCK_CHARS.includes(ch)) this.blocked.add(key);
         if (ch === 'd') this.doors.add(key);
@@ -765,7 +766,7 @@ class World extends Phaser.Scene {
     // 但必须留宽限期 —— 开战有 260ms 转场，这段时间子场景还没起来，
     // 提前解锁会让玩家按住的方向继续生效，一步踏进下一只怪，战斗套战斗出不来。
     if (this.inBattle) {
-      const running = ['Battle', 'Puzzle', 'Candy', 'Clock'].some(k => this.scene.isActive(k));
+      const running = ['Battle', 'Puzzle', 'Candy', 'Clock', 'Balance'].some(k => this.scene.isActive(k));
       if (running) this.lockedAt = 0;
       else {
         if (!this.lockedAt) this.lockedAt = this.time.now;
@@ -880,6 +881,12 @@ class World extends Phaser.Scene {
         ? (GS.clues.includes('c2d') ? null : '!')
         : (talked ? null : '!');
       case 'quest': {
+        if (GS.chapter === 3) {                    // 小秤：攒够数量上交
+          const st = GS.quest.sample;
+          if (!st) return '!';
+          if (st === 'done') return null;
+          return ((GS.mats && GS.mats.sample) || 0) >= 5 ? '!' : '?';
+        }
         if (GS.chapter === 2) {                    // 滴答：换物链
           const st = GS.quest.trade;
           if (!st) return '!';                     // 还没接
@@ -1485,6 +1492,7 @@ class World extends Phaser.Scene {
 
   // ---- 委托 NPC：线索要靠帮忙换 ----
   npcQuest(id, npc) {
+    if (GS.chapter === 3) { this.questWeigh(npc); return; }
     if (GS.chapter === 2) { this.questTick(npc); return; }
     if (GS.chapter === 1) { this.questRelay(npc); return; }
     const st = GS.quest.dodo;
@@ -1582,6 +1590,79 @@ class World extends Phaser.Scene {
       ? ['塔顶的大钟又走了！', '我也该把自己的钟摆修好了。']
       : ['我在修一个钟摆。', '滴答老哭，因为她的钟不响。\n……我这儿倒是有颗铃舌。'];
     this.dialog.say(lines, null, npc.name);
+  }
+
+  // 称重锁（第4章）：三个人各知道一袋的重量，加起来才是答案。
+  // 和前几章不同 —— 这里不是排除、不是印证，是把三段信息算到一起
+  lockWeigh(key, n, lock) {
+    const known = lock.clues.filter(k => GS.clues.includes(k));
+    if (known.length < lock.clues.length) {
+      this.dialog.say([
+        '箱盖上刻着：「三袋矿一共多少克？」',
+        `营地里三个人各知道一袋，\n你只问到了 ${known.length}/3 个。`,
+        '先去问齐。\n（记在冒险手册的线索本里）',
+      ]);
+      return;
+    }
+    const L = CH4_WEIGHLOCK;
+    const fmt = g => g >= 1000 ? `${g} 克（${Math.floor(g / 1000)}千克${g % 1000}克）` : `${g} 克`;
+    this.dialog.say(
+      lock.clues.map(k => `${CLUES[k].from}：\n「${CLUES[k].ask}」`)
+        .concat(['三袋加起来一共多少克？']),
+      () => {
+        this.dialog.choice('一共……', L.candidates.map(fmt).concat('再想想'), i => {
+          if (i >= L.candidates.length) return;
+          if (L.candidates[i] === L.answer) {
+            GS.locks.push(n); saveGame();
+            this.dialog.say(['咔哒——箱子开了！', `算对了：\n${L.explain}`], () => this.openChest(key, n));
+          } else {
+            this.dialog.say([`${L.candidates[i]} 克？再加一遍看看。`,
+                             '第二袋是"比第一袋重 200 克"，\n半千克是 500 克。\n（不会有惩罚的）'],
+              () => this.lockWeigh(key, n, lock));
+          }
+        });
+      });
+  }
+
+  // ---- 第4章委托：攒够数量上交（前三章是取物/传话/换物链）----
+  // 小秤要 5 块矿石样本，打矿洞的怪就会掉。进度随时能查，不用记
+  questWeigh(npc) {
+    const need = 5;
+    GS.mats = GS.mats || {};
+    const got = GS.mats.sample || 0;
+    const st = GS.quest.sample;
+    if (st === 'done') {
+      this.dialog.say(['样本都齐了，我称完记好了。',
+        '原来每块矿石都不一样重。\n我以前以为都一样。'], null, npc.name);
+      return;
+    }
+    if (!st) {
+      GS.quest.sample = 'taken'; saveGame();
+      this.dialog.say([
+        '（她面前摆着一台小秤，本子上记满了数。）',
+        '我在记每种矿石有多重。',
+        `可我不敢往深处走。\n你能帮我带 ${need} 块矿石样本回来吗？`,
+        '矿洞里的怪身上就有，\n打倒它们就掉出来了。',
+      ], null, npc.name);
+      return;
+    }
+    if (got < need) {
+      this.dialog.say([`样本还差 ${need - got} 块。`,
+        `（你现在有 ${got} 块。）`,
+        '矿洞里的怪身上都有，\n多打几只就够了。'], null, npc.name);
+      return;
+    }
+    GS.quest.sample = 'done';
+    GS.mats.sample -= need;
+    GS.p.gold += 800;
+    saveGame(); this.updateHUD();
+    this.dialog.say([
+      `（你把 ${need} 块矿石放在秤上。）`,
+      '（她一块块称，认真记下来。）',
+      '这块 300 克，这块 800 克……\n差得好多！',
+      '谢谢你！这是我攒的钱，💰800 金币。',
+      '我以前觉得矿石都一样重。\n原来得称过才知道。',
+    ], null, npc.name);
   }
 
   // ---- 跨章委托：大钟的三个零件 ----
@@ -1695,6 +1776,21 @@ class World extends Phaser.Scene {
   }
 
   npcLore(npc) {
+    if (GS.chapter === 3) {
+      const first = !GS.clues.includes('c4d');
+      const lines = GS.flags.boss
+        ? ['（老矿工摸着岩壁。）',
+           '河马走了。矿又能开了。',
+           '当年也有个孩子往书包里装石头。',
+           '他想让自己称起来重一点。',
+           '……你捡的那些纸，\n是不是他写的？']
+        : ['（他眼睛看不见，手一直贴着岩壁。）',
+           '我在这矿里四十年，\n手比眼睛准。',
+           CLUES.c4d.ask,
+           '早年有个孩子常来。\n总蹲在秤边上，不说话。'];
+      this.dialog.say(lines, () => { if (first) this.addClue('c4d'); }, npc.name);
+      return;
+    }
     // 跨章：第2章扫地的老人收着那卷铜丝
     if (GS.chapter === 1 && GS.errand === 'given' && !(GS.parts || []).includes('wire')) {
       GS.parts = (GS.parts || []).concat('wire'); saveGame();
@@ -1750,6 +1846,15 @@ class World extends Phaser.Scene {
 
   // ---- 闲聊 NPC：世界要活，台词随进度变 ----
   npcChat(npc) {
+    if (GS.chapter === 3) {
+      const lines = GS.flags.boss
+        ? ['河马被你放倒了！', '我爹说等矿开了，\n就给我买台真的秤。']
+        : ['我叫铁头！我能扛两袋矿。',
+           '小秤天天在那儿称东西，\n称得没完。',
+           '你要是往深处去，\n帮她带点样本吧。'];
+      this.dialog.say(lines, null, npc.name);
+      return;
+    }
     if (GS.chapter === 2) { this.questRing(npc); return; }
     if (GS.chapter === 1) { this.questBoy(npc); return; }
     const lines = GS.flags.boss
@@ -1775,6 +1880,8 @@ class World extends Phaser.Scene {
       else if (lock.kind === 'code')    this.lockCode(key, n, lock);
       else if (lock.kind === 'riddle')  this.lockRiddle(key, n, lock);
       else if (lock.kind === 'schedule') this.lockCalc(key, n, 'timespan');
+      else if (lock.kind === 'unit')     this.lockCalc(key, n, 'masspick');
+      else if (lock.kind === 'weigh')    this.lockWeigh(key, n, lock);
       else if (lock.kind === 'clock')   this.lockClock(key, n, lock);
     });
   }
@@ -2003,9 +2110,10 @@ class World extends Phaser.Scene {
     const K = CHAPTER.puzzle.kind;
     const desc = K === 'candy' ? '石室中间堆着一小堆糖，\n旁边摆着几个空盘子。'
       : K === 'clock' ? '屋子中间立着一面大钟，\n指针可以拨动。墙上刻着一行字。'
+      : K === 'balance' ? '秤室里立着一架大铜天平，\n左盘压着一袋矿，右边一排砝码。'
       : '石室里摆着几个刻了数字的石箱，\n地上有写着口诀的凹槽。';
     this.dialog.say([desc], () => {
-      const room = K === 'clock' ? '钟室' : '石室';
+      const room = K === 'clock' ? '钟室' : K === 'balance' ? '秤室' : '石室';
       this.dialog.choice(`要进${room}吗？（还剩 ${left} 间）`, ['进去！', '再等等'], i => {
         if (i !== 0) return;
         this.inBattle = true;   // 借用同一个锁，避免地图继续响应输入
@@ -2013,7 +2121,8 @@ class World extends Phaser.Scene {
         this.held = null; this.queued = null;
         const next = SOKOBAN.findIndex((_, k) => !GS.rooms.includes(k));
         this.cameras.main.resetFX();
-        this.scene.launch(K === 'candy' ? 'Candy' : K === 'clock' ? 'Clock' : 'Puzzle', { room: next });
+        this.scene.launch(K === 'candy' ? 'Candy' : K === 'clock' ? 'Clock'
+          : K === 'balance' ? 'Balance' : 'Puzzle', { room: next });
         this.scene.sleep();
       });
     });
@@ -2509,7 +2618,7 @@ class Battle extends Phaser.Scene {
     if (correct) {
       this.combo++;
       const perfect = this.combo % 3 === 0;   // 连对3次：暴击 + 完美格挡 + 回MP
-      const subject = /[+−×]/.test(this.q.text) ? 'math' : 'chinese';
+      const subject = this.q.subj || 'math';   // 题目自带，不靠猜题面
       let dmg = Math.max(1, totalAtk() + upgBonus(this.isBoss) - this.enemy.def) + Phaser.Math.Between(0, 2);
       dmg = Math.round(dmg * gearBoost(subject));
       if (this.isSkill) dmg = Math.round(dmg * 2.2);
@@ -2552,7 +2661,10 @@ class Battle extends Phaser.Scene {
       this.combo = 0;
       this.comboText.setText('');
       if (!this.isRevenge && GS.pool.length < 10 && !GS.pool.some(q => q.text === this.q.text)) {
-        GS.pool.push({ text: this.q.text, options: this.q.options, answer: this.q.answer, tip: this.q.tip });
+        // subj 也要存：怨念怪重问时得知道这题算数学还是语文，
+        // 否则语文错题被当数学，护符加成就错了
+        GS.pool.push({ text: this.q.text, options: this.q.options, answer: this.q.answer,
+                       tip: this.q.tip, subj: this.q.subj });
       }
       // GM 下答错也要秒掉。否则敌人不掉血、自己又不死，双方僵住，战斗永远打不完
       if (GS.gm) {
@@ -2621,6 +2733,13 @@ class Battle extends Phaser.Scene {
       msgs.push(`获得 ${expGain} 经验、💰${goldGain} 金币！`);
       // 齿轮碎片：只有钟楼的怪会掉，是回第1章找铁匠强化武器的料。
       // 掉率给足（一半），不然为了 3 块碎片刷半小时，孩子早烦了
+      // 矿石样本：小秤的委托要 5 块，掉率给足，不然刷得烦
+      if (CHAPTER.dropSample && !this.isRevenge && GS.quest.sample === 'taken'
+          && Phaser.Math.Between(1, 100) <= 60) {
+        GS.mats = GS.mats || {};
+        GS.mats.sample = (GS.mats.sample || 0) + 1;
+        msgs.push(`掉了一块【矿石样本】！（共 ${GS.mats.sample} 块）`);
+      }
       if (CHAPTER.dropCog && !this.isRevenge && Phaser.Math.Between(1, 100) <= 50) {
         GS.mats = GS.mats || {};
         GS.mats.cog = (GS.mats.cog || 0) + 1;
@@ -3110,6 +3229,165 @@ class Clock extends Phaser.Scene {
   }
 }
 
+// ============ 天平机关（第4章招牌谜题）============
+// 左盘固定重量，右边一排砝码，点一下放上去/再点拿下来。
+// 换算就发生在"1千克那块顶几个200克"里 —— 孩子是在配平里学千克
+class Balance extends Phaser.Scene {
+  constructor() { super('Balance'); }
+  init(data) { this.roomIdx = data.room || 0; }
+
+  create() {
+    const lv = SOKOBAN[this.roomIdx];      // loadChapter 已把本章谜题装进 SOKOBAN
+    this.lv = lv;
+    this.on = lv.weights.map(() => false); // 每块砝码在不在盘上
+    this.done = false;
+    this.tries = 0;
+
+    this.add.rectangle(W / 2, H / 2, W, H, 0x1a1a22);
+    this.add.text(W / 2, 40, lv.name, { fontSize: '25px', fontFamily: FONT, color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.add.text(W / 2, 74, `秤室 ${this.roomIdx + 1} / ${SOKOBAN.length}`, { fontSize: '17px', fontFamily: FONT, color: '#8090b8' }).setOrigin(0.5);
+    this.add.text(W / 2, 110, lv.riddle, { fontSize: '19px', fontFamily: FONT, color: '#fff2c0',
+      align: 'center', wordWrap: { width: 430 }, lineSpacing: 6 }).setOrigin(0.5);
+
+    // --- 天平：横梁会随两边差值倾斜 ---
+    const cx = W / 2, cy = 250;
+    this.add.rectangle(cx, cy + 96, 20, 96, 0x6a6a76);       // 立柱
+    this.add.rectangle(cx, cy + 146, 150, 14, 0x6a6a76);      // 底座
+    this.beam = this.add.rectangle(cx, cy, 300, 12, 0xc8a03a);
+    this.leftPan = this.add.rectangle(cx - 140, cy + 34, 110, 12, 0xb08f5c);
+    this.rightPan = this.add.rectangle(cx + 140, cy + 34, 110, 12, 0xb08f5c);
+    this.leftTxt = this.add.text(cx - 140, cy + 58, '', { fontSize: '19px', fontFamily: FONT, color: '#ffd76a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.rightTxt = this.add.text(cx + 140, cy + 58, '', { fontSize: '19px', fontFamily: FONT, color: '#9beaf7', fontStyle: 'bold' }).setOrigin(0.5);
+    this.stateTxt = this.add.text(cx, cy - 46, '', { fontSize: '21px', fontFamily: FONT, color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+
+    // --- 砝码：点一下上盘，再点下盘 ---
+    this.wBtn = [];
+    const n = lv.weights.length;
+    const perRow = Math.min(3, n);
+    lv.weights.forEach((g, i) => {
+      const row = Math.floor(i / perRow), col = i % perRow;
+      const cols = Math.min(perRow, n - row * perRow);
+      const x = W / 2 + (col - (cols - 1) / 2) * 150;
+      const y = 470 + row * 74;
+      const label = g >= 1000 ? `${g / 1000}千克` : `${g}克`;
+      const b = makeButton(this, x, y, 138, 62, label, () => {
+        if (this.done) return;
+        this.on[i] = !this.on[i];
+        this.paint();
+      }, { fontSize: '19px' });
+      this.wBtn.push(b);
+    });
+
+    this.tip = this.add.text(W / 2, 630, '点砝码放到右盘，两边一样重就平了',
+      { fontSize: '17px', fontFamily: FONT, color: '#c8d4f0', align: 'center', wordWrap: { width: 440 } }).setOrigin(0.5);
+
+    makeButton(this, 120, 700, 190, 58, '↺ 全拿下', () => {
+      if (this.done) return;
+      this.on = this.on.map(() => false);
+      this.paint();
+    }, { fontSize: '18px' });
+    makeButton(this, 360, 700, 190, 58, '✓ 就这样', () => this.submit(), { fontSize: '18px' });
+    makeButton(this, W / 2, 776, 230, 54, '💡 提示', () => {
+      if (!this.done) this.tip.setText(lv.hint);
+    }, { fontSize: '18px' });
+
+    this.paint();
+  }
+
+  right() { return this.lv.weights.reduce((s, g, i) => s + (this.on[i] ? g : 0), 0); }
+
+  // 克↔千克 都写出来，孩子随时看得见两种表示
+  fmt(g) { return g >= 1000 ? `${Math.floor(g / 1000)}千克${g % 1000 ? (g % 1000) + '克' : ''}\n(${g}克)` : `${g}克`; }
+
+  paint() {
+    const L = this.lv.target, R = this.right();
+    this.leftTxt.setText(this.fmt(L));
+    this.rightTxt.setText(this.fmt(R));
+    // 横梁倾斜：差得越多歪得越厉害，但最多 12 度，免得盘子飞出屏幕
+    const tilt = Phaser.Math.Clamp((R - L) / Math.max(L, 1) * 24, -12, 12);
+    this.beam.setRotation(tilt * Math.PI / 180);
+    const cy = 250;
+    this.leftPan.y = cy + 34 - tilt * 2.2;
+    this.rightPan.y = cy + 34 + tilt * 2.2;
+    this.leftTxt.y = this.leftPan.y + 24;
+    this.rightTxt.y = this.rightPan.y + 24;
+    this.stateTxt.setText(R === L ? '平了！' : R < L ? '右边轻' : '右边重')
+      .setColor(R === L ? '#8ee88e' : '#ffb060');
+    this.wBtn.forEach((b, i) => {
+      b.bg.setFillStyle(this.on[i] ? 0x4a6fbe : 0x2c3e6b);
+      b.bg.setStrokeStyle(3, this.on[i] ? 0xffe08a : 0xf4e6c0);
+    });
+  }
+
+  submit() {
+    if (this.done) return;
+    const L = this.lv.target, R = this.right();
+    if (R === L) { this.win(); return; }
+    this.tries++;
+    const d = Math.abs(R - L);
+    this.tip.setText(
+      (R < L ? `右边还差 ${d} 克。` : `右边多了 ${d} 克。`)
+      + (this.tries >= 3 ? '\n' + this.lv.hint : '\n（随便试，不会有惩罚）'));
+  }
+
+  win() {
+    const lv = this.lv;
+    this.done = true;
+    this.cameras.main.flash(300, 255, 240, 180);
+    if (!GS.rooms.includes(this.roomIdx)) GS.rooms.push(this.roomIdx);
+    const lines = [`天平停住了 —— 两边都是 ${lv.target} 克。\n石门里的齿轮响了一声！`];
+    if (lv.target >= 1000) {
+      lines.push(`${lv.target} 克 = ${Math.floor(lv.target / 1000)} 千克 ${lv.target % 1000} 克。\n1 千克就是 1000 克。`);
+    }
+    lines.push(lv.hint);
+    const rw = lv.reward;
+    if (rw.kind === 'gold') { GS.p.gold += rw.val; lines.push(`石台上有 💰${rw.val} 金币！`); }
+    else if (rw.kind === 'gear') {
+      const g = GEAR[rw.key];
+      const old = GS.p.eq[g.slot];
+      GS.p.eq[g.slot] = rw.key;
+      if (old && GEAR[old].buy > 0) GS.p.bag.push(old);
+      lines.push(`石台上放着【${g.name}】！\n${g.desc}`);
+    } else if (rw.kind === 'frag') {
+      const g = fragGlobal(GS.chapter, rw.idx);
+      if (!GS.frags.includes(g)) {
+        GS.frags.push(g);
+        lines.push('地上有一页发黄的纸……', fragText(g), `（本章记忆碎片 ${chapterFrags()}/8）`);
+      }
+    }
+    if (SOKOBAN.every((_, i) => GS.rooms.includes(i))) {
+      GS.flags.puzzle = true;
+      lines.push('三架天平都配平了！\n矿底的石门开了。');
+    }
+    saveGame();
+    this.panel(lines, () => {
+      const next = SOKOBAN.findIndex((_, i) => !GS.rooms.includes(i));
+      if (next >= 0) this.scene.restart({ room: next });
+      else this.leave();
+    });
+  }
+
+  panel(lines, cb) {
+    const bg = this.add.rectangle(W / 2, H / 2, 456, 320, 0x14182e, 0.97).setStrokeStyle(4, 0xf4e6c0).setDepth(100);
+    const txt = this.add.text(W / 2, H / 2 - 30, '', { fontSize: '20px', fontFamily: FONT, color: '#fff',
+      align: 'center', wordWrap: { width: 410 }, lineSpacing: 8 }).setOrigin(0.5).setDepth(101);
+    const q = lines.slice();
+    const btn = makeButton(this, W / 2, H / 2 + 110, 200, 56, '继续', () => {
+      if (q.length) { txt.setText(q.shift()); return; }
+      bg.destroy(); txt.destroy(); btn.destroy(); cb();
+    }, { fontSize: '20px' });
+    btn.bg.setDepth(101); btn.txt.setDepth(102);
+    txt.setText(q.shift());
+  }
+
+  leave() {
+    GS.fromPuzzle = true;
+    saveGame();
+    this.scene.stop();
+    this.scene.wake('World');
+  }
+}
+
 // ============ 通关 ============
 class Clear extends Phaser.Scene {
   constructor() { super('Clear'); }
@@ -3166,6 +3444,6 @@ window.game = new Phaser.Game({
   pixelArt: true,
   backgroundColor: '#000',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, World, Battle, Puzzle, Candy, Clock, Clear],
+  scene: [Boot, Title, World, Battle, Puzzle, Candy, Clock, Balance, Clear],
 });
 window.GS = GS;

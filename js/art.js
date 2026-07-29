@@ -322,6 +322,121 @@ const SPRITES = {
       "......yyyy......",
     ],
   },
+  // ---- 第五章：长廊的四种怪 ----
+  // 卷尺虫：一卷带刻度的软尺，一节一节
+  tape: {
+    p: { y:'#e8d070', d:'#a89440', w:'#ffffff', k:'#111111', l:'#f7ecb8' },
+    r: [
+      "................",
+      "....yyyyyyyy....",
+      "...ylllllllly...",
+      "..ylwkllllwkly..",
+      "..yllllllllllly.",
+      "..ydydydydydydy.",
+      "...yyyyyyyyyyy..",
+      "....dyyyyyyyd...",
+      "...dyyyyyyyyyd..",
+      "..dyyyyyyyyyyyd.",
+      "..dydydydydydyd.",
+      "..dyyyyyyyyyyyd.",
+      "...dyyyyyyyyyd..",
+      "....ddddddddd...",
+      "................",
+      "................",
+    ],
+  },
+  // 标杆兵：一根立着的标杆，顶上一颗头
+  rod: {
+    p: { b:'#c05a4a', l:'#e08a78', w:'#ffffff', k:'#111111', s:'#c8c8d4' },
+    r: [
+      "................",
+      ".....bbbbbb.....",
+      "....bllllllb....",
+      "....blwkwklb....",
+      "....bllllllb....",
+      "....blllllllb...",
+      ".....bbbbbb.....",
+      "......ssss......",
+      "......sbbs......",
+      "......ssss......",
+      "......sbbs......",
+      "......ssss......",
+      "......sbbs......",
+      ".....ssssss.....",
+      "....bbbbbbbb....",
+      "................",
+    ],
+  },
+  // 皮尺蛇：细长盘起来的皮尺
+  coil: {
+    p: { g:'#5aa87a', d:'#3a7050', w:'#ffffff', k:'#111111', y:'#e8d070', l:'#8ed8a8' },
+    r: [
+      "................",
+      "..gggg..........",
+      ".gllllg.........",
+      ".glwkwlg........",
+      ".gllllllg.......",
+      "..gggggggg......",
+      "...dgggggggg....",
+      "....ygygygygy...",
+      "...ggggggggggg..",
+      "..gggddddddgggg.",
+      "..ggd......dggg.",
+      "..gd........dgg.",
+      "..gd.ggggg..dgg.",
+      "..gdggyygggddgg.",
+      "...ggggggggggg..",
+      "....ddddddddd...",
+    ],
+  },
+  // 双生字：两个一模一样的方块脸（语文·形近字）
+  twin: {
+    p: { v:'#8a7ac8', l:'#b8a8e8', w:'#ffffff', k:'#111111', y:'#f4c542' },
+    r: [
+      "................",
+      ".vvvvv...vvvvv..",
+      ".vlllv...vlllv..",
+      ".vlwlv...vlwlv..",
+      ".vlllv...vlllv..",
+      ".vvvvv...vvvvv..",
+      "..vyv.....vyv...",
+      "..vvv.....vvv...",
+      ".vvvvvvvvvvvvvv.",
+      ".vlllllllllllv..",
+      ".vlwkllllwklv...",
+      ".vllllyylllllv..",
+      ".vvvvvvvvvvvvv..",
+      "..vvv.....vvv...",
+      "..vvv.....vvv...",
+      "................",
+    ],
+  },
+  // 量尺蛇：浑身刻度的大蛇
+  boss5: {
+    p: { g:'#4a9a70', d:'#2e6a4a', w:'#ffffff', k:'#111111', y:'#e8d070', c:'#8ed8a8' },
+    r: [
+      ".....gggggggggg.....",
+      "...gggggggggggggg...",
+      "..gggcccccccccggg...",
+      "..ggcccccccccccgg...",
+      "..ggcwkcccccwkcgg...",
+      "..ggccccccccccccg...",
+      "..ggccyyyyyyccccg...",
+      "..gggccccccccccgg...",
+      "...ggggggggggggg....",
+      "....gyggygggyggg....",
+      "...gggggggggggggg...",
+      "..ggyggygggyggyggg..",
+      ".gggggggggggggggggg.",
+      "ggyggygggyggyggggggg",
+      "gggggggggggggggggggg",
+      ".ddgggggggggggggggd.",
+      "..dddgggggggggddd...",
+      "....dddddddddd......",
+      "....................",
+      "....................",
+    ],
+  },
   // ---- 第四章：矿洞的四种怪 ----
   // 矿石傀：一坨会走的矿石
   ore: {
@@ -533,6 +648,7 @@ const NPC_PALETTES = {
   npc_carpenter:{ h:'#4a3520', s:'#dda878', k:'#232323', b:'#6f8a4a' },
   npc_guard2:   { h:'#2b2b33', s:'#e2b892', k:'#232323', b:'#7a4a8a' },
   npc_miner:    { h:'#3a2f22', s:'#d8a878', k:'#232323', b:'#8a7a4a' },
+  npc_tailor:   { h:'#241c14', s:'#f2c9a0', k:'#232323', b:'#4a8a9a' },
 };
 
 function hexInt(hex) { return parseInt(hex.slice(1), 16); }
@@ -655,6 +771,19 @@ function makeTextures(scene) {
   makeTile(scene, 't_mfloor', '#7a6a58', g => {
     dots(g, '#93826c', [[2,3],[7,5],[12,2],[4,11],[10,13],[14,8]]);
     dots(g, '#5f5245', [[5,8],[9,9],[13,4],[3,14]]);
+  });
+
+  // ---- 第五章：尺寸长廊（青砖 + 带刻度的砖墙）----
+  makeTile(scene, 't_brick', '#8a8a96', g => {
+    g.fillStyle(hexInt('#9c9caa'), 1); g.fillRect(0, 0, 16, 7); g.fillRect(0, 8, 16, 7);
+    g.fillStyle(hexInt('#70707c'), 1); g.fillRect(0, 7, 16, 1); g.fillRect(0, 15, 16, 1);
+    g.fillStyle(hexInt('#6a6a76'), 1); g.fillRect(5, 0, 1, 7); g.fillRect(11, 8, 1, 7);
+  });
+  makeTile(scene, 't_lwall', '#5a5a68', g => {
+    g.fillStyle(hexInt('#6e6e7c'), 1); g.fillRect(1, 1, 14, 14);
+    // 墙上一道刻度
+    g.fillStyle(hexInt('#c8c8d4'), 1);
+    for (let i = 1; i < 16; i += 3) g.fillRect(i, 7, 1, i % 6 === 1 ? 5 : 3);
   });
 
   // 迷宫内部地砖

@@ -66,7 +66,7 @@ const CH1_MAP = [
   "kkkkkkkkkkkkkkkkkkkkkkkkk", // 57
 ];
 
-const BLOCK_CHARS = 'TrwdfkCXBGDWPM~';   // NPC 与 b 由代码另行标记为障碍。M=矿洞岩壁
+const BLOCK_CHARS = 'TrwdfkCXBGDWPML~';   // NPC 与 b 由代码另行标记为障碍。M=矿洞岩壁 L=长廊砖墙
 
 // 数值经 balance_sim.js 验证：等级墙成立，且堆装备无法绕过
 const ENEMIES = {
@@ -94,6 +94,12 @@ const ENEMIES = {
   bat:    { key:'bat',    name:'秤砣蝠',     tex:'bat',    hp:190,def:16,atk:37, exp:136,gold:34, qtype:'masspick' },
   echo:   { key:'echo',   name:'回声蝠',     tex:'echo',   hp:198,def:17,atk:36, exp:138,gold:34, qtype:'duoyin' },
   boss4:  { key:'boss4',  name:'称重河马',   tex:'boss4',  hp:320,def:49,atk:52, exp:3200,gold:1200,qtype:'mixed4b', boss:true },
+  // --- 第五章（curve_sim ch5：达标 Lv26 我攻79/我防29/我HP230）---
+  tape:   { key:'tape',   name:'卷尺虫',     tex:'tape',   hp:242,def:21,atk:44, exp:170,gold:45, qtype:'lenunit' },
+  rod:    { key:'rod',    name:'标杆兵',     tex:'rod',    hp:250,def:22,atk:45, exp:176,gold:47, qtype:'lencmp' },
+  coil:   { key:'coil',   name:'皮尺蛇',     tex:'coil',   hp:236,def:20,atk:46, exp:172,gold:46, qtype:'lenpick' },
+  twin:   { key:'twin',   name:'双生字',     tex:'twin',   hp:244,def:21,atk:45, exp:174,gold:46, qtype:'xingjin' },
+  boss5:  { key:'boss5',  name:'量尺蛇',     tex:'boss5',  hp:320,def:64,atk:64, exp:5200,gold:1800,qtype:'mixed5b', boss:true },
 };
 
 // ================= 装备（DQ 逻辑：五部位，卖价 75%） =================
@@ -144,6 +150,12 @@ const GEAR = {
   plate_s:  { slot:'shield', name:'秤盘盾',   def:11, buy:780, desc:'铜秤盘，又厚又沉' },
   gramch:   { slot:'charm',  name:'克重香囊', int:11, buy:820, desc:'答错伤害再减10%，智力+11', softenWrong:true },
   weightc:  { slot:'charm',  name:'砝码护符', int:16, buy:0,   desc:'答对回3点MP，智力+16', mpBonus:3, treasure:true },
+  // --- 第五章新增（Lv26 前后买得起）---
+  tape_sw:  { slot:'weapon', name:'卷尺鞭',   atk:19, buy:1100, desc:'甩出去能抽到很远' },
+  ruler_h:  { slot:'head',   name:'量角盔',   def:12, buy:960,  desc:'顶上带个半圆的刻度' },
+  ruler_s:  { slot:'shield', name:'尺盾',     def:14, buy:0,    desc:'一整块刻度板', treasure:true },
+  cmcharm:  { slot:'charm',  name:'厘米绳',   int:13, buy:1150, desc:'限时题时间+50%，智力+13', slowQ:0.5 },
+  longruler:{ slot:'boots',  name:'伸缩尺',   spd:12, buy:0,    desc:'一步能跨很远', treasure:true },
 };
 
 // 第1章商店卖什么（宝箱专属的不卖）
@@ -619,6 +631,62 @@ function duoyinQ() {
            tip: `${use.s} → ${d.c} 读 ${use.y}。\n（${other.s} 里读 ${other.y}）` };
 }
 
+// ---- 第5章：米与厘米（人教版三上）----
+// 换算 1米=100厘米、1分米=10厘米
+function lenUnitQ() {
+  const kind = irnd(0, 3);
+  if (kind === 0) { const m = irnd(2, 9); return { text: `${m} 米 = ? 厘米`, options: numOptions(m * 100), answer: String(m * 100), tip: `1 米 = 100 厘米，所以 ${m} 米 = 100×${m} = ${m * 100} 厘米` }; }
+  if (kind === 1) { const m = irnd(2, 9); return { text: `${m * 100} 厘米 = ? 米`, options: numOptions(m), answer: String(m), tip: `100 厘米是 1 米，${m * 100} 里有 ${m} 个 100，所以是 ${m} 米` }; }
+  if (kind === 2) { const d = irnd(2, 9); return { text: `${d} 分米 = ? 厘米`, options: numOptions(d * 10), answer: String(d * 10), tip: `1 分米 = 10 厘米，所以 ${d} 分米 = ${d * 10} 厘米` }; }
+  const m = irnd(1, 8), c = irnd(1, 9) * 10;
+  return { text: `${m} 米 ${c} 厘米 = ? 厘米`, options: numOptions(m * 100 + c), answer: String(m * 100 + c),
+           tip: `${m} 米 = ${m * 100} 厘米，再加 ${c} 厘米 = ${m * 100 + c} 厘米` };
+}
+
+const LEN_THINGS = [
+  { n:'一支铅笔', u:'厘米' }, { n:'一本书的宽', u:'厘米' }, { n:'一块橡皮', u:'厘米' },
+  { n:'你的手掌', u:'厘米' }, { n:'一枚硬币', u:'厘米' },
+  { n:'教室的长', u:'米' }, { n:'一棵大树的高', u:'米' }, { n:'操场跑道', u:'米' },
+  { n:'一辆公交车', u:'米' }, { n:'旗杆的高', u:'米' },
+];
+function lenPickQ() {
+  const t = LEN_THINGS[irnd(0, LEN_THINGS.length - 1)];
+  return { text: `${t.n}\n有多长？用哪个单位合适？`, options: shuffle(['厘米', '米', '千克', '分钟']), answer: t.u,
+           tip: t.u === '厘米' ? `${t.n}比较短，用【厘米】。` : `${t.n}比较长，用【米】。\n1 米 = 100 厘米。` };
+}
+
+// 单位不同的两段谁更长 —— 必须先换算成同一个单位，这是本章的核心
+function lenCmpQ() {
+  const a = irnd(1, 3) * 100 + irnd(0, 9) * 10;      // 厘米
+  let b = irnd(1, 3) * 100 + irnd(0, 9) * 10;
+  while (b === a) b = irnd(1, 3) * 100 + irnd(0, 9) * 10;
+  const show = c => (irnd(0, 1) && c % 100 === 0) ? `${c / 100} 米` : `${c} 厘米`;
+  const sa = show(a), sb = show(b);
+  const longer = a > b ? sa : sb;
+  return { text: `哪个更长？\n${sa}　还是　${sb}`, options: shuffle([sa, sb, '一样长', '比不出来']), answer: longer,
+           tip: `换成厘米比：${a} 厘米 和 ${b} 厘米。\n${Math.max(a, b)} 更大，所以 ${longer} 更长。` };
+}
+
+// ---- 形近字（语文，第5章）----
+// 和"辨长短"呼应：都是把很像的两样东西分清楚
+const XINGJIN = [
+  { s:'请把门（　）上', a:'关', d:['天','夫','开'] },
+  { s:'太阳（　）来了', a:'出', d:['山','由','击'] },
+  { s:'他在（　）书',   a:'读', d:['卖','买','续'] },
+  { s:'我很（　）心',   a:'开', d:['井','丹','升'] },
+  { s:'天上有（　）朵云', a:'几', d:['九','凡','丸'] },
+  { s:'（　）里有水',   a:'河', d:['何','荷','可'] },
+  { s:'他跑得很（　）', a:'快', d:['块','决','诀'] },
+  { s:'（　）字要写好', a:'汉', d:['汗','没','汁'] },
+  { s:'一（　）花',     a:'朵', d:['杂','采','杀'] },
+  { s:'（　）妈妈说话', a:'听', d:['斤','拆','折'] },
+];
+function xingjinQ() {
+  const it = XINGJIN[irnd(0, XINGJIN.length - 1)];
+  return { subj:'chinese', text: `「${it.s}」\n填哪个字？`, options: shuffle([it.a, ...it.d]), answer: it.a,
+           tip: `${it.s.replace('（　）', it.a)}。\n这几个字长得像，别看错。` };
+}
+
 // ---- 第4章：克与千克（人教版三上）----
 // 千克↔克 换算。整千克进出，孩子练的是"1千克=1000克"这一条
 function massUnitQ() {
@@ -681,7 +749,8 @@ const QSUBJ = {
   massunit:'math', masspick:'math', masssum:'math',
   chinese:'chinese', liangci:'chinese', antonym:'chinese', duoyin:'chinese',
   mixed:'mixed', mixed2:'mixed', mixed3:'math', mixed3b:'mixed', mixed4:'math', mixed4b:'mixed',
-  mixed1b:'mixed', mixed2b:'mixed', mixedmath:'math', revenge:'mixed',
+  lenunit:'math', lenpick:'math', lencmp:'math', xingjin:'chinese',
+  mixed1b:'mixed', mixed2b:'mixed', mixed5b:'mixed', mixedmath:'math', revenge:'mixed',
 };
 
 function getQuestion(type) {
@@ -707,6 +776,11 @@ function getQuestionRaw(type) {
   if (type === 'masssum')   return massSumQ();
   if (type === 'mixed4')    return [massUnitQ, massPickQ, massSumQ][irnd(0, 2)]();
   if (type === 'mixed4b')   return [massUnitQ, massPickQ, massSumQ, duoyinQ][irnd(0, 3)]();
+  if (type === 'lenunit')   return lenUnitQ();
+  if (type === 'lenpick')   return lenPickQ();
+  if (type === 'lencmp')    return lenCmpQ();
+  if (type === 'xingjin')   return xingjinQ();
+  if (type === 'mixed5b')   return [lenUnitQ, lenPickQ, lenCmpQ, xingjinQ][irnd(0, 3)]();
   if (type === 'mixed2')    return [divideQ, remainderQ, liangciQ][irnd(0, 2)]();
   if (type === 'mixed1b')   return [multQ, multQ, chineseQ][irnd(0, 2)]();
   if (type === 'mixed2b')   return [divideQ, remainderQ, liangciQ][irnd(0, 2)]();
@@ -893,6 +967,66 @@ const CH4_MAP = _ch4map();
 
 const CH4_START   = { x:12, y:11 };
 const CH4_REVENGE = { x:12, y:14 };
+
+// ---- 第5章：尺寸长廊 ----
+// 拓扑第五种：螺旋。一条走廊从外圈一圈圈绕到最里面，路只有一条但很长，
+// 每绕一圈廊宽都不一样（3格→2格→1格），"越走越窄"本身就是尺寸的暗示。
+function _ch5map() {
+  const W = 25, H = 58, g = Array.from({ length: H }, () => Array(W).fill('L'));
+  const put = (x, y, c) => { if (y >= 0 && y < H && x >= 0 && x < W) g[y][x] = c; };
+  const fill = (x1, y1, x2, y2, c) => {
+    for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++)
+      for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) put(x, y, c);
+  };
+
+  // --- 廊口的量尺小镇（0~12）---
+  fill(1, 1, 23, 12, 'q');
+  fill(2, 2, 5, 4, 'r'); fill(2, 3, 5, 4, 'w'); put(3, 4, 'd');
+  fill(18, 2, 21, 4, 'r'); fill(18, 3, 21, 4, 'w'); put(20, 4, 'd');
+  fill(2, 7, 5, 9, 'r'); fill(2, 8, 5, 9, 'w'); put(3, 9, 'd');
+  put(7, 6, '4'); put(16, 6, '5'); put(9, 10, '6'); put(19, 9, '7'); put(6, 11, '8');
+  put(13, 6, 'E'); put(17, 11, 'H'); put(21, 7, 'J');
+  put(11, 12, 'O');
+
+  // --- 螺旋走廊：一圈圈往里绕，逐圈变窄 ---
+  // 每一圈用四条边拼出来，wid 是廊宽
+  const ring = (x1, y1, x2, y2, wid) => {
+    fill(x1, y1, x2, y1 + wid - 1, 'q');            // 上边
+    fill(x1, y2 - wid + 1, x2, y2, 'q');            // 下边
+    fill(x1, y1, x1 + wid - 1, y2, 'q');            // 左边
+    fill(x2 - wid + 1, y1, x2, y2, 'q');            // 右边
+  };
+  ring(2, 15, 22, 54, 3);        // 最外圈，宽3
+  ring(6, 21, 18, 48, 2);        // 第二圈，宽2
+  ring(9, 26, 15, 43, 1);        // 第三圈，宽1（只能单排通过）
+
+  // 圈与圈之间的开口（错开，逼着你绕整圈）
+  fill(12, 13, 13, 15, 'q');     // 镇子 → 外圈（上方进）
+  fill(12, 18, 13, 21, 'q');     // 外圈 → 第二圈（上方）
+  fill(6, 34, 9, 35, 'q');       // 第二圈 → 第三圈（左侧，得绕半圈才到）
+
+  // --- 最里面：量尺厅 + 石门 + 魔王厅 ---
+  // 魔王厅只能留 x=11~13，四周都得是墙，否则会贴上内圈的走廊、绕过石门
+  fill(11, 27, 13, 36, 'q');     // 量尺厅（从第三圈上边 y=26 进）
+  put(12, 30, 'D');              // 搭桥机关入口
+  put(12, 37, 'G');              // 量尺石门 —— 通魔王厅的唯一一格
+  fill(11, 38, 13, 41, 'q');     // 魔王厅（y=42 留墙，别贴到第三圈下边 y=43）
+  put(12, 39, 'X'); put(12, 40, 'B');
+
+  // --- 内容：沿着螺旋分布，越里面越好 ---
+  put(3,  17, 'c'); put(21, 20, 'p');
+  put(3,  50, 'h'); put(21, 51, 'c');
+  put(7,  23, 'p'); put(17, 24, 'h');
+  put(7,  46, 'h'); put(17, 45, 'c');
+  put(20, 30, '9');              // 外圈右侧：迷路的量尺匠
+  put(7, 40, 'b');               // 地上的木尺（接了委托才出现）
+
+  return g.map(r => r.join(''));
+}
+const CH5_MAP = _ch5map();
+
+const CH5_START   = { x:12, y:11 };
+const CH5_REVENGE = { x:12, y:14 };
 
 const CH2_START   = { x:12, y:11 };
 const CH2_REVENGE = { x:12, y:15 };
@@ -1310,6 +1444,142 @@ const CH4_BALANCE = [
     reward:{ kind:'gear', key:'plate_s' } },
 ];
 
+// ================= 第五章数据 =================
+const CH5_SPAWNS = [
+  { k:'tape', x:12, y:16 }, { k:'rod',  x:20, y:17 },
+  { k:'tape', x:4,  y:30 }, { k:'rod',  x:21, y:38 },
+  { k:'tape', x:12, y:52 }, { k:'rod',  x:7,  y:26 },
+  { k:'coil', x:17, y:22 }, { k:'coil', x:7,  y:44 },
+  { k:'tape', x:12, y:33 }, { k:'rod',  x:12, y:33 },
+  { k:'twin', x:13, y:19 }, { k:'twin', x:11, y:47 },   // 双生字（语文·形近字）
+];
+
+// 日记第 33–40 页：他开始量自己和别人的距离
+const CH5_FRAGS = [
+  { where:'外圈',   text:'第三十三页：\n「我量了我和他的座位。\n两步半。」' },
+  { where:'外圈',   text:'第三十四页：\n「下课他们都到操场去。\n我数了，一百二十步。」' },
+  { where:'第二圈', text:'第三十五页：\n「我把尺子借给他。\n他没还，我也没要。」' },
+  { where:'搭桥第一间', text:'第三十六页：\n「先生说，量东西要从零开始。\n我总从一开始。」' },
+  { where:'宝箱里', text:'第三十七页：\n「所以我量什么都短一点。」' },
+  { where:'隐藏处', text:'第三十八页：\n「我想量一量我离他们有多远。」' },
+  { where:'隐藏处', text:'第三十九页：\n「尺子不够长。」' },
+  { where:'隐藏处', text:'第四十页：\n「接了三根，还是不够。」' },
+];
+
+const CH5_NPCS = {
+  '1': { name:'老尺匠',    tex:'npc_elder',    role:'elder' },
+  '2': { name:'商人',      tex:'npc_merchant', role:'shop' },
+  '3': { name:'老师',      tex:'npc_teacher',  role:'teacher' },
+  // 线索机制第五种：长短关系推理（甲比乙长、乙比丙长 → 谁最长）
+  '4': { name:'量布的师傅', tex:'npc_smith',   role:'clue', clue:'c5a' },
+  '5': { name:'织带的婶婶', tex:'npc_aunt',    role:'clue', clue:'c5b' },
+  '9': { name:'迷路的量尺匠', tex:'npc_traveler', role:'clue', clue:'c5c' },
+  '6': { name:'寸寸',      tex:'npc_girl',     role:'quest' },
+  '7': { name:'驼背的老人', tex:'npc_grandpa', role:'lore' },
+  '8': { name:'尺子',      tex:'npc_boy',      role:'chat' },
+  'E': { name:'廊口的引路人', tex:'npc_guard', role:'info',
+    lines: ['这廊子是一圈圈往里绕的。',
+            '越往里越窄，最里面只能一个人过。',
+            '路只有一条，别怕走错，\n就是长。'],
+    lines2: ['蛇走了，廊子空了。\n绕一圈也不累了。'] },
+  'H': { name:'背尺子的小子', tex:'npc_kid', role:'info',
+    lines: ['这儿的怪都问长短。',
+            '一米等于一百厘米，\n一分米等于十厘米。',
+            '两段长短不一样的单位，\n先换成一样的再比。'],
+    lines2: ['我现在一眼就能换算了！'] },
+  'J': { name:'圆盘旁的奶奶', tex:'npc_granny', role:'info',
+    lines: ['圆盘老规矩。',
+            '前面四个地方，\n有纸片没捡完就回去。'],
+    lines2: ['五个地方都通了。'] },
+};
+
+const CH5_CLUES = {
+  c5a: { lock:'order', from:'量布的师傅', ask:'那口箱子要按长短开。\n我知道一条：\n红布比蓝布长。',
+         note:'量布师傅：红 > 蓝' },
+  c5b: { lock:'order', from:'织带的婶婶', ask:'我织的黄带子\n比红布还长。',
+         note:'织带婶婶：黄 > 红' },
+  c5c: { lock:'order', from:'迷路的量尺匠', ask:'蓝布我量过，\n它比绿布长。',
+         note:'量尺匠：蓝 > 绿' },
+  c5d: { lock:'lore',  from:'驼背的老人',  ask:'砖缝里插着东西。\n我腰弯不下去了。',
+         note:'砖缝藏有东西（拿到伸缩尺再回来）' },
+};
+
+// 排序锁：黄 > 红 > 蓝 > 绿，问最长的是哪个
+const CH5_ORDERLOCK = {
+  answer: '黄带子',
+  candidates: ['黄带子', '红布', '蓝布', '绿布'],
+  explain: '黄 > 红（婶婶说的）\n' +
+           '红 > 蓝（师傅说的）\n' +
+           '蓝 > 绿（量尺匠说的）\n' +
+           '连起来：黄 > 红 > 蓝 > 绿。\n最长的是黄带子。',
+};
+
+const CH5_LOCKS = [
+  { kind:'calc',  icon:'🔢', hint:'箱盖上刻着一道米和厘米的换算题' },
+  { kind:'ruler', icon:'📐', hint:'箱盖上画着一样东西，\n问你该用米还是厘米。' },
+  { kind:'order', icon:'📊', hint:'箱盖上刻着：\n「哪一根最长？」\n镇上三个人各知道一组长短。', clues:['c5a','c5b','c5c'] },
+];
+
+const CH5_CHESTS = [
+  { kind:'gear', key:'ruler_s', msg:'找到了【尺盾】！' },
+  { kind:'frag', idx:4,         msg:'箱子里是一页发黄的纸……' },
+  { kind:'gear', key:'longruler', msg:'找到了传说中的【伸缩尺】！\n（商店买不到，走路速度+12）' },
+];
+
+const CH5_HOUSES = {
+  '3,4':  { name:'量布铺', owner:'1', rows:[
+    "WWWWWWWWW",
+    "WtFFFFFtW",
+    "WFFFFFFFW",
+    "WuFFNFFuW",
+    "WFFFFFFFW",
+    "WtFFFFFtW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '20,4': { name:'尺行', owner:'2', rows:[
+    "WWWWWWWWW",
+    "WuFFuFFuW",
+    "WFFFFFFFW",
+    "WFFFNFFFW",
+    "WFFFFFFFW",
+    "WuFFuFFuW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+  '3,9':  { name:'长廊学堂', owner:'3', rows:[
+    "WWWWWWWWW",
+    "WFtFtFtFW",
+    "WFFFFFFFW",
+    "WFFFNFFFW",
+    "WFFFFFFFW",
+    "WFtFtFtFW",
+    "WFFFDFFFW",
+    "WWWWWWWWW" ]},
+};
+
+const CH5_SHOP = ['tape_sw','pick_sw','ruler_h','ruler_s','plate_s','swift_b','gramch','cmcharm'];
+
+// ---- 搭桥机关（第5章招牌谜题）----
+// 不是"凑总长"（那和第4章天平一样了），是"按长短排顺序"。
+// 木板标着混着的单位，必须先换算成同一单位才排得对 —— 这正是本章要练的。
+const CH5_BRIDGE = [
+  { name:'第一间 · 从短到长', unit:'厘米',
+    boards:[{ label:'30厘米', cm:30 }, { label:'1米', cm:100 }, { label:'70厘米', cm:70 }],
+    riddle:'石刻：「阶梯要从矮到高。」\n把木板按从短到长摆好。',
+    hint:'1米 = 100厘米。\n所以顺序是 30厘米 → 70厘米 → 1米。',
+    reward:{ kind:'frag', idx:3 } },
+  { name:'第二间 · 单位混着来', unit:'厘米',
+    boards:[{ label:'2米', cm:200 }, { label:'150厘米', cm:150 }, { label:'8分米', cm:80 }, { label:'1米20厘米', cm:120 }],
+    riddle:'石刻：「从矮到高，一块也不许错。」',
+    hint:'全换成厘米：80、120、150、200。\n顺序是 8分米 → 1米20厘米 → 150厘米 → 2米。',
+    reward:{ kind:'gold', val:900 } },
+  { name:'第三间 · 差一点也不行', unit:'厘米',
+    boards:[{ label:'1米05厘米', cm:105 }, { label:'95厘米', cm:95 }, { label:'1米', cm:100 },
+            { label:'1米15厘米', cm:115 }, { label:'9分米', cm:90 }],
+    riddle:'石刻：「五块，从矮到高。」\n这几块差得很近，看仔细。',
+    hint:'换成厘米：90、95、100、105、115。\n顺序是 9分米 → 95厘米 → 1米 → 1米05厘米 → 1米15厘米。',
+    reward:{ kind:'gear', key:'ruler_s' } },
+];
+
 // ============================================================
 // 章节表：game.js 通过 loadChapter() 切换，其余代码无需改动
 // ============================================================
@@ -1329,7 +1599,9 @@ const CHAPTERS = [
     gateHint:['一扇巨大的石门，上面刻着乘法口诀。',
               '门缝里透出光，可是推不开——\n旁边那个石室里好像有机关。'],
     elderWhere:'南边沙漠里的口诀骆驼王守着记忆水晶。',
-    elderSide:'沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。' },
+    elderSide:'沙漠两边的岔路你也去看看，\n听说藏着别人丢下的东西。',
+    groundItem:{ quest:'dodo', appearAt:'taken', becomes:'found', tint:0x9fd8f0,
+                 msg:['捡到了一本浅蓝色封面的作业本。', '是朵朵丢的那本吧？\n拿回村里还给她。'] } },
   { n:2, name:'除法回廊', recLv:11, tool:'hook', toolName:'🪝词语钩爪', boss:'boss2',
     map:CH2_MAP, start:CH2_START, revenge:CH2_REVENGE, spawns:CH2_SPAWNS,
     frags:CH2_FRAGS, npcs:CH2_NPCS, clues:CH2_CLUES, locks:CH2_LOCKS,
@@ -1400,6 +1672,32 @@ const CHAPTERS = [
                  '木板路变成了碎石坡。',
                  '空气里有铁锈味，\n远处传来矿车的咔嗒声。',
                  '一个黑黢黢的洞口张在山壁上 ——\n【砝码矿洞】。'] },
+  { n:5, name:'尺寸长廊', recLv:26, tool:'ruler', toolName:'📏伸缩尺', boss:'boss5',
+    map:CH5_MAP, start:CH5_START, revenge:CH5_REVENGE, spawns:CH5_SPAWNS,
+    frags:CH5_FRAGS, npcs:CH5_NPCS, clues:CH5_CLUES, locks:CH5_LOCKS,
+    chests:CH5_CHESTS, houses:CH5_HOUSES, shop:CH5_SHOP,
+    puzzle:{ kind:'bridge', rooms:CH5_BRIDGE },
+    bossTile:{ x:12, y:40 }, crystalTile:{ x:12, y:39 },
+    hiddenBase:5, hiddenTool:'ruler', hiddenToolName:'伸缩尺',
+    groundItem:{ quest:'owner', appearAt:'taken', becomes:'found', tint:0xf0d8a0,
+                 msg:['地上有一把木尺。', '刻度只到 30，浅色木头，\n尾巴上有个缺口。',
+                      '是谁丢的？\n拿回镇上问问吧。'] },
+    dex:['tape','rod','coil','twin','revenge','boss5'],
+    bossTaunt:'嘶——你有多长？\n量不够的，我不让过。',
+    hiddenLocked:'砖缝里好像插着什么……\n手指伸不进去。',
+    toolHint:'「长廊的砖缝里插着东西。\n用伸缩尺能撬出来。」',
+    gateHint:['一扇石门，门上刻着一道长长的刻度。',
+              '刻度对不上，门就不开——\n里面的搭桥室应该有机关。'],
+    elderWhere:'廊子最里面的量尺蛇守着第五颗水晶。',
+    elderSide:'廊子是一圈圈往里绕的。\n路只有一条，绕到底就是。',
+    elderTease:['再往南是一条老长廊。',
+                '住进去一条蛇，浑身是刻度。',
+                '它量什么都嫌短，\n量不够的东西就不许过。',
+                '现在廊子里的东西，\n谁也搬不出来。'],
+    travelBeats:['你顺着水晶往南走。',
+                 '碎石坡换成了平整的青砖。',
+                 '砖上刻着一道道刻度，\n一直延伸到看不见的地方。',
+                 '一条绕成圈的长廊铺在眼前 ——\n【尺寸长廊】。'] },
 ];
 
 // 当前章节的数据（game.js 直接用这些名字）
@@ -1431,8 +1729,8 @@ loadChapter(0);
 
 if (typeof module !== 'undefined') {
   module.exports = { ENEMIES, GEAR, SLOTS, SPELLS, spellsAt,
-                     TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot, BLOCK_CHARS,
-                     CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, CH3_CLOCK, CH3_CLOCKLOCK, CH4_BALANCE, CH4_WEIGHLOCK,
+                     TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot, BLOCK_CHARS, QSUBJ,
+                     CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, CH3_CLOCK, CH3_CLOCKLOCK, CH4_BALANCE, CH4_WEIGHLOCK, CH5_BRIDGE, CH5_ORDERLOCK,
                      fragGlobal, fragText, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
   // 下面这些会被 loadChapter 整个换掉，所以必须导出成 getter。

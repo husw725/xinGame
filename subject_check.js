@@ -6,9 +6,10 @@ const D = require('./js/data.js');
 let bad = 0;
 const ok = (cond, msg) => { console.log(`  ${cond ? '✓' : '✗'} ${msg}`); if (!cond) bad++; };
 
-// 题型 → 学科。和 data.js 里的 QSUBJ 一致，但这里独立列一份用来交叉核对：
-// 两边不一致就说明有题型忘了登记
-const CHINESE = ['chinese', 'liangci', 'antonym', 'duoyin'];
+// 从 data.js 导入 QSUBJ —— 这里原来自己列了一份语文题型清单，
+// 加了 xingjin 之后没跟上，第5章的语文怪被当成数学怪。抄一份就会漂。
+const CHINESE = Object.entries(D.QSUBJ).filter(([, v]) => v === 'chinese').map(([k]) => k);
+console.log('语文题型：' + CHINESE.join(' ') + '\n');
 
 console.log('=== 每一章都要有语文题 ===\n');
 D.CHAPTERS.forEach(C => {
@@ -73,3 +74,37 @@ ok(/const subject = this\.q\.subj/.test(src), 'game.js 用题目自带的 subj')
 
 if (bad) { console.log(`\n✗ ${bad} 处问题`); process.exit(1); }
 console.log('\n✅ 每章都有语文和数学，Boss 两科都考，学科判定不靠猜');
+
+// ---- 语文题的干扰项不许送分 ----
+// 曾经写过一条：答案是「关」，干扰项里放了「关心」—— 一眼就能排除，白给
+console.log('\n=== 语文题干扰项合法性 ===\n');
+let dbad = 0;
+const ZH_TYPES = CHINESE;
+ZH_TYPES.forEach(t => {
+  const seen = new Set();
+  let n = 0;
+  for (let i = 0; i < 600; i++) {
+    const q = D.getQuestion(t);
+    const k = q.text + '|' + q.answer;
+    if (seen.has(k)) continue;
+    seen.add(k); n++;
+    const wrong = q.options.filter(o => o !== q.answer);
+    // 干扰项不能包含正确答案（也不能被正确答案包含）—— 那等于直接指出来。
+    // 只对汉字选项生效：拼音里 cháng 天然包含 háng，那正是要孩子分辨的地方，不算送分。
+    const cjk = t => /^[一-龥]+$/.test(t);
+    const leak = cjk(q.answer)
+      ? wrong.filter(o => cjk(o) && (o.includes(q.answer) || q.answer.includes(o)))
+      : [];
+    if (leak.length) {
+      console.log(`  ✗ ${t}：「${q.text.replace(/\n/g, ' ')}」答案「${q.answer}」，干扰项 ${JSON.stringify(leak)} 和答案互相包含`);
+      dbad++;
+    }
+    // 拼音题的选项长度差太多也是送分（"zhòng" vs "山"）
+    if (t === 'duoyin' && wrong.some(o => /[一-龥]/.test(o))) {
+      console.log(`  ✗ ${t}：拼音题里混进了汉字选项 ${JSON.stringify(wrong)}`); dbad++;
+    }
+  }
+  console.log(`  ${dbad ? ' ' : '✓'} ${t.padEnd(9)} 查了 ${n} 种不同题面`);
+});
+if (dbad) { console.log(`\n✗ 干扰项 ${dbad} 处送分`); process.exit(1); }
+console.log('  ✓ 所有语文题的干扰项都不泄露答案');

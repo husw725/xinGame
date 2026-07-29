@@ -226,3 +226,35 @@ if (CH4_BALANCE[CH4_BALANCE.length - 1].target < 1000) { console.log('✗ 最后
 if (!CH4_BALANCE.some(l => l.weights.includes(1000))) { console.log('✗ 至少要有一块 1 千克砝码，否则学不到换算'); wbad++; }
 if (wbad) { console.log(`\n✗ 天平机关 ${wbad} 处问题`); process.exit(1); }
 console.log('\n✅ 天平机关三间都配得平，难度递增（克 → 跨千克 → 多块组合）');
+
+// ---- 搭桥机关（第5章）----
+// 排序题：必须有唯一正确顺序（长度不能有并列），否则"排对了"没法判定
+const { CH5_BRIDGE } = require('./js/data.js');
+console.log('\n=== 搭桥机关可解性验证 ===\n');
+let bbad = 0;
+CH5_BRIDGE.forEach((lv, i) => {
+  const cms = lv.boards.map(b => b.cm);
+  const dup = cms.filter((v, k) => cms.indexOf(v) !== k);
+  const sorted = lv.boards.slice().sort((a, b) => a.cm - b.cm);
+  console.log(`${dup.length ? '✗' : '✓'} 第${i + 1}间「${lv.name}」 ${lv.boards.length} 块：`
+    + sorted.map(b => `${b.label}(${b.cm})`).join(' < '));
+  if (dup.length) { console.log(`    ✗ 有长度并列 ${dup}，排序没有唯一解`); bbad++; }
+  if (lv.boards.length < 3) { console.log('    ✗ 少于3块，排序太简单'); bbad++; }
+  if (lv.boards.length > 5) { console.log('    ✗ 超过5块，屏幕排不下'); bbad++; }
+  // label 和 cm 必须对得上，否则孩子按标签算是对的却判错
+  lv.boards.forEach(b => {
+    const m = b.label.match(/^(?:(\d+)米)?\s*(?:(\d+)厘米)?$/);
+    const dm = b.label.match(/^(\d+)分米$/);
+    let calc = null;
+    if (dm) calc = Number(dm[1]) * 10;
+    else if (m && (m[1] || m[2])) calc = (Number(m[1] || 0) * 100) + Number(m[2] || 0);
+    if (calc === null) { console.log(`    ✗ 标签「${b.label}」看不懂`); bbad++; }
+    else if (calc !== b.cm) { console.log(`    ✗ 标签「${b.label}」算出来是 ${calc} 厘米，数据写的 ${b.cm}`); bbad++; }
+  });
+  if (!lv.hint || !lv.riddle || !lv.reward) { console.log('    ✗ 缺提示/题面/奖励'); bbad++; }
+});
+// 难度递增：第一间单位少，后面必须混单位
+const mixUnits = lv => new Set(lv.boards.map(b => /分米/.test(b.label) ? 'dm' : /米/.test(b.label) ? 'm' : 'cm')).size;
+if (mixUnits(CH5_BRIDGE[CH5_BRIDGE.length - 1]) < 2) { console.log('✗ 最后一间应该混着单位（练换算）'); bbad++; }
+if (bbad) { console.log(`\n✗ 搭桥机关 ${bbad} 处问题`); process.exit(1); }
+console.log('\n✅ 搭桥机关三间都有唯一顺序，标签与实际长度一致');

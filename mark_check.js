@@ -142,10 +142,23 @@ check('攒够5块 → 转 !', 3, b4('taken', 5), { 小秤: '!' });
 check('攒过头也算够 → !', 3, b4('taken', 7), { 小秤: '!' });
 check('交完了 → 不标', 3, b4('done', 0), {});
 
+console.log('\n=== 第5章 认对主人委托 ===\n');
+const T5 = allTalked(4);
+const allClues5 = ['c5a', 'c5b', 'c5c', 'c5d'];
+const b5 = st => ({ ...base(4), talked: T5, clues: allClues5, quest: { owner: st },
+                    errand: 'done', parts: ['gear', 'wire', 'glass'] });
+
+check('刚到长廊（谁都没聊过）', 4, base(4),
+  { 老尺匠: '!', 量布的师傅: '!', 织带的婶婶: '!', 迷路的量尺匠: '!', 寸寸: '!',
+    驼背的老人: '!', 尺子: '!', 廊口的引路人: '!', 背尺子的小子: '!', 圆盘旁的奶奶: '!' });
+check('接了委托、还没捡到尺子 → ?', 4, b5('taken'), { 寸寸: '?' });
+check('捡到尺子 → 回去交 !', 4, b5('found'), { 寸寸: '!' });
+check('认对主人了 → 不标', 4, b5('done'), {});
+
 console.log('\n=== 开场说明分给的 NPC（role:info）===\n');
 // 这几位承接了原来开场一口气念完的说明，必须一开局就挂 !，否则孩子不知道该问谁
 // 每一章都要有至少3位承接说明的 NPC
-[0, 1, 2, 3].forEach(ch => {
+[0, 1, 2, 3, 4].forEach(ch => {
   loadChapter(ch);
   const n = Object.values(ctx.__get('NPCS')).filter(x => x.role === 'info').length;
   console.log(`  ${n >= 3 ? '✓' : '✗'} 第${ch + 1}章有 ${n} 位 info NPC`);
@@ -179,7 +192,7 @@ info1.filter(([, n]) => n.lines2).forEach(([id, n]) => {
 
 // 纯服务 NPC 永远不标
 console.log('');
-[0, 1, 2, 3].forEach(ch => {
+[0, 1, 2, 3, 4].forEach(ch => {
   loadChapter(ch);
   Object.assign(ctx.GS, { chapter: ch, clues: [], quest: {}, talked: [], flags: {} });
   const NPCS = ctx.__get('NPCS');
@@ -213,7 +226,7 @@ const introBlock = src.slice(src.indexOf('// --- 开场剧情 ---'), src.indexOf
 
 // 台词不能长到印出框外：对话框每页约 3 行 × 每行约 14 个全角字
 console.log('\n=== info NPC 台词长度（框内放得下）===\n');
-[0, 1, 2, 3].forEach(ch => {
+[0, 1, 2, 3, 4].forEach(ch => {
   loadChapter(ch);
   Object.entries(ctx.__get('NPCS')).filter(([, n]) => n.role === 'info').forEach(([, n]) => {
     [].concat(n.lines || [], n.lines2 || []).forEach(line => {
@@ -229,3 +242,27 @@ console.log('\n=== info NPC 台词长度（框内放得下）===\n');
 if (!ibad) console.log('  ✓ 全部台词都在 3 行 / 22 字以内');
 if (ibad) { console.log(`\n✗ 开场/台词 ${ibad} 处问题`); process.exit(1); }
 console.log('\n✅ 开场已精简，说明分散到 NPC，台词长度都放得下');
+
+// ---- 委托物拾取点 ----
+// 章节数据里写了 groundItem，地图上就必须有 'b' 那一格，否则委托永远做不完
+console.log('\n=== 地上的委托物 ===\n');
+let gbad = 0;
+D2 = require('./js/data.js');
+D2.CHAPTERS.forEach((C, ci) => {
+  loadChapter(ci);
+  const M = ctx.__get('MAP'), MW = ctx.__get('MAPW'), MH = ctx.__get('MAPH');
+  let spot = null;
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (M[y][x] === 'b') spot = { x, y };
+  const gi = C.groundItem;
+  if (gi && !spot) { console.log(`  ✗ 第${C.n}章 有 groundItem 但地图上没有 'b' 格，委托做不完`); gbad++; }
+  else if (!gi && spot) { console.log(`  ✗ 第${C.n}章 地图上有 'b' 格但没有 groundItem 数据，捡了会报错`); gbad++; }
+  else if (gi) {
+    const okk = gi.quest && gi.appearAt && gi.becomes && Array.isArray(gi.msg) && gi.msg.length;
+    console.log(`  ${okk ? '✓' : '✗'} 第${C.n}章 委托物 @(${spot.x},${spot.y})  ${gi.quest}: ${gi.appearAt} → ${gi.becomes}`);
+    if (!okk) gbad++;
+  } else {
+    console.log(`  ✓ 第${C.n}章 没有地上委托物（不是每章都要有）`);
+  }
+});
+if (gbad) { console.log(`\n✗ 委托物 ${gbad} 处问题`); process.exit(1); }
+console.log('  ✓ 委托物数据和地图对得上');

@@ -203,7 +203,9 @@ const CH1_START = { x:12, y:12 };
 // ================= 记忆碎片（一本日记，全七章共 56 页） =================
 // 第一章只放第 1–8 页：建立同情，不给任何身份线索。
 // 许愿（第41-48页）和"陪我再学一次"（第56页）分别在第6章和终章 —— 提前给出会毁掉整条暗线。
-const TOTAL_FRAGS = 56;
+// 全书页数 = 章数 × 8。原来写死 56（按7章+终章算的），
+// 可实际只做到第5章 —— 界面永远显示 x/56，集齐这件事根本达不成。
+// 定义放在 CHAPTERS 后面，见文件末尾的 TOTAL_FRAGS。
 const CH1_FRAGS = [
   { where:'左支路 · 沙地上',  text:'第一页：\n「今天又是最后一名。\n先生念名字的时候，我盯着桌子。」' },
   { where:'右支路 · 沙地上',  text:'第二页：\n「他们叫我笨蛋。\n我说我不是，可我说不出为什么。」' },
@@ -1700,6 +1702,8 @@ const CHAPTERS = [
                  '一条绕成圈的长廊铺在眼前 ——\n【尺寸长廊】。'] },
 ];
 
+const TOTAL_FRAGS = CHAPTERS.length * 8;
+
 // 当前章节的数据（game.js 直接用这些名字）
 let MAP, MAPW, MAPH, SPAWNS, PLAYER_START, REVENGE_TILE, FRAGMENTS,
     NPCS, CLUES, CHEST_LOCKS, CHESTS, HOUSES, SHOP_GEAR, SOKOBAN, CHAPTER;
@@ -1742,6 +1746,27 @@ function fragText(g) {
   const c = CHAPTERS[Math.floor(g / 8)];
   return c ? c.frags[g % 8] : null;
 }
+
+// 连起来读的时候要的是正文：去掉"第X页："这个收集用的抬头，也去掉外面那层「」。
+// 一页一页翻的时候留着页码有用，连着读就成噪音了。
+function fragBody(g) {
+  const f = fragText(g);
+  if (!f) return null;
+  return f.text
+    .replace(/^第[^\n]*页：\n?/, '')
+    .replace(/^「/, '').replace(/」$/, '')
+    .trim();
+}
+
+// 章节之间的过渡：不是日记内容，是"你"翻纸时注意到的东西。
+// 少了这个，五章的页码接在一起还是五叠纸，不是一本书。
+const FRAG_BRIDGE = [
+  null,                                   // 第1章前面不用过渡
+  '（后面几页的纸变粗了，像是从别的本子上撕的。）',
+  '（这几页的字比前面小，行距也挤。）',
+  '（有几页边角发黑，像在什么地方蹭过。）',
+  '（最后这几页纸最薄，对着光能看见背面的字。）',
+];
 function fragsOfChapter(chapterIdx, list) {
   const lo = chapterIdx * 8, hi = lo + 8;
   return list.filter(g => g >= lo && g < hi);
@@ -1753,7 +1778,7 @@ if (typeof module !== 'undefined') {
   module.exports = { ENEMIES, GEAR, SLOTS, SPELLS, spellsAt,
                      TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot, BLOCK_CHARS, QSUBJ,
                      CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, CH3_CLOCK, CH3_CLOCKLOCK, CH4_BALANCE, CH4_WEIGHLOCK, CH5_BRIDGE, CH5_ORDERLOCK,
-                     fragGlobal, fragSlots, fragText, fragsOfChapter,
+                     fragGlobal, fragSlots, fragText, fragBody, FRAG_BRIDGE, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
   // 下面这些会被 loadChapter 整个换掉，所以必须导出成 getter。
   // 直接写进对象字面量的话导出的是加载那一刻的值 —— node 校验脚本里

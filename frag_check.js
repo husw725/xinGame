@@ -120,5 +120,85 @@ D.CHAPTERS.forEach((C, ci) => {
   ctx.__shutdown();
 });
 
+console.log(bad ? `\n（前面已有 ${bad} 处问题）` : '\n✓ 每章 8 页都拿得到，编号不重不漏不串章');
+
+// ---- 集齐之后要能读成一个故事 ----
+// 目标不是"能列出40页"，是连起来读像一本书：页码抬头要去掉、章与章之间要有过渡、
+// 每屏行数放得下、结尾要收得住。
+console.log('\n=== 连起来读 ===\n');
+const c2 = makeCtx();
+const W2 = c2.__get('World');
+const w2 = new W2();
+
+function renderStory(frags) {
+  c2.GS.frags = frags.slice();
+  c2.GS.chapter = 0;
+  c2.__get('loadChapter')(0);
+  const out = [];
+  w2.dialog = { say: l => out.push(...l), choice: () => {}, open: false };
+  w2.handbook = () => {}; w2.readDiary = () => {};
+  w2.diaryStory();
+  return out;
+}
+
+const ALL = [];
+for (let i = 0; i < D.TOTAL_FRAGS; i++) ALL.push(i);
+const full = renderStory(ALL);
+
+// 1) 正文里不许再出现"第X页："这种收集用的抬头
+const heads = full.filter(s => /第[一二三四五六七八九十百]+页：/.test(s));
+ok(!heads.length, '连读时去掉了「第X页：」的抬头', heads[0]);
+// 2) 也不该整屏都裹在「」里
+const quoted = full.filter(s => /^「/.test(s) && /」$/.test(s));
+ok(!quoted.length, '连读时去掉了外层「」', quoted[0]);
+// 3) 每一章之间要有过渡句，否则五章拼一起还是五叠纸。
+// 直接比对 FRAG_BRIDGE 本身，别用"含某个字"这种脆判据
+// 第1章之后，每一章都必须有过渡句。不能先 filter(Boolean) —— 那等于
+// 数据里写了 null 就自动豁免，少一句反而查不出来
+let bridgeMiss = 0;
+for (let ch = 1; ch < D.CHAPTERS.length; ch++) {
+  const b = D.FRAG_BRIDGE[ch];
+  if (!b) { console.log(`  ✗ 第${ch + 1}章没有过渡句（FRAG_BRIDGE[${ch}] 是空的）`); bridgeMiss++; }
+  else if (!full.includes(b)) { console.log(`  ✗ 第${ch + 1}章的过渡句没出现在连读里`); bridgeMiss++; }
+}
+ok(!bridgeMiss, `第2~${D.CHAPTERS.length}章每章都有过渡句`);
+// 4) 每屏行数放得下（对话框约 4 行，超了会缩字号断在奇怪的地方）
+const tall = full.filter(s => s.split('\n').length > 4);
+ok(!tall.length, '每屏都不超过 4 行', tall.length ? JSON.stringify(tall[0]) : '');
+// 5) 首尾要立住
+ok(/从第一张开始读/.test(full[0] || ''), '有开头的引子');
+const tail = full.slice(-6).join('\n');
+ok(/断了|更远的地方/.test(tail), '集齐后有收尾，而不是干巴巴一句"齐了"');
+ok(!/整本都拼齐了。$/.test(tail), '收尾不是原来那句敷衍的「整本都拼齐了」');
+// 6) 40 页的正文一句都不能漏
+const body = full.join('\n');
+let lost = 0;
+for (let g = 0; g < D.TOTAL_FRAGS; g++) {
+  const b = D.fragBody(g);
+  if (!b) { console.log(`  ✗ 第${g + 1}页取不到正文`); bad++; continue; }
+  const firstLine = b.split('\n')[0];
+  if (!body.includes(firstLine)) { console.log(`  ✗ 第${g + 1}页没出现在连读里：${firstLine}`); lost++; }
+}
+ok(!lost, `40 页正文一句不漏`);
+
+// 7) 缺页时要说清缺在哪、缺几页 —— 这是唯一的找页提示
+const gappy = renderStory(ALL.filter(g => ![3, 4, 20].includes(g)));
+const gapMarks = gappy.filter(s => /缺了 \d+ 页/.test(s));
+ok(gapMarks.length >= 2, `缺页处标出了 ${gapMarks.length} 段空缺`, JSON.stringify(gapMarks));
+ok(gappy.some(s => /还差 3 页/.test(s)), '结尾告诉你还差几页');
+ok(!gappy.some(s => /断了|更远的地方/.test(s)), '没集齐就不给收尾（收尾是集齐的奖励）');
+
+// 8) 一页都没有的章节要整章跳过，不能只剩一句过渡句
+const onlyCh1 = renderStory([0, 1, 2, 3, 4, 5, 6, 7]);
+ok(!onlyCh1.some(s => /纸最薄/.test(s)), '完全没捡到的章节不会只留一句过渡');
+
+// 9) 全书页数必须跟得上章数
+ok(D.TOTAL_FRAGS === D.CHAPTERS.length * 8,
+  `全书 ${D.TOTAL_FRAGS} 页 = ${D.CHAPTERS.length} 章 × 8`);
+const gsrc = require('fs').readFileSync('js/game.js', 'utf8');
+ok(!/const TOTAL_FRAGS = \d+;/.test(require('fs').readFileSync('js/data.js', 'utf8')),
+  'TOTAL_FRAGS 不是写死的数字（写死过 56，实际只有 40，永远集不齐）');
+ok(/diaryStory\(\)/.test(gsrc) && /diaryPages\(\)/.test(gsrc), '日记有「连起来读」和「一页一页翻」两种读法');
+
 if (bad) { console.log(`\n✗ ${bad} 处问题`); process.exit(1); }
-console.log('\n✅ 每章 8 页都拿得到，编号不重不漏不串章');
+console.log('\n✅ 40 页连起来是一个故事：无页码抬头、有章节过渡、缺页标得出、集齐有收尾');

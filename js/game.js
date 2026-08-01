@@ -1156,6 +1156,66 @@ class World extends Phaser.Scene {
       this.dialog.say(['你还没有找到任何记忆碎片。\n沙漠的支路里好像藏着什么……'], () => this.handbook());
       return;
     }
+    const n = GS.frags.length, total = TOTAL_FRAGS;
+    this.dialog.choice(
+      `📜 捡到的日记　${n}/${total} 页`,
+      [n >= total ? '📖 从头读一遍（已集齐）' : '📖 连起来读', '🔖 一页一页翻', '↩️ 返回'],
+      i => {
+        if (i === 0) this.diaryStory();
+        else if (i === 1) this.diaryPages();
+        else this.handbook();
+      });
+  }
+
+  // 连起来读：去掉页码和引号，缺的地方明确标出来。
+  // 目的是让它读起来是一个故事，不是四十张散纸。
+  diaryStory() {
+    const have = new Set(GS.frags);
+    const lines = ['（你把纸按页码理好，从第一张开始读。）'];
+    let gapRun = 0;
+    for (let ch = 0; ch < CHAPTERS.length; ch++) {
+      const pages = [];
+      for (let i = 0; i < 8; i++) {
+        const g = ch * 8 + i;
+        if (have.has(g)) pages.push(fragBody(g));
+        else pages.push(null);
+      }
+      if (pages.every(p => p === null)) continue;      // 这一章一页都没有，跳过
+      if (FRAG_BRIDGE[ch]) lines.push(FRAG_BRIDGE[ch]);
+      // 相邻的页并到一屏，读着才连贯。但对话框一屏放得下约 4 行，
+      // 并过头会被自动缩字号、断在奇怪的地方，所以按行数并而不是按页数并。
+      const MAXROW = 4;
+      let buf = [], rows = 0;
+      const flush = () => { if (buf.length) { lines.push(buf.join('\n')); buf = []; rows = 0; } };
+      pages.forEach(p => {
+        if (p === null) { gapRun++; flush(); return; }
+        if (gapRun) { lines.push(`……（这里缺了 ${gapRun} 页）……`); gapRun = 0; }
+        const r = p.split('\n').length;
+        if (rows && rows + r > MAXROW) flush();
+        buf.push(p); rows += r;
+      });
+      flush();
+    }
+    if (gapRun) lines.push(`……（后面还缺 ${gapRun} 页）……`);
+
+    if (GS.frags.length >= TOTAL_FRAGS) {
+      // 集齐的收尾：不点名，但要让这四十页落成一件事
+      lines.push(
+        '（你把最后一张放回去，从头到尾又看了一遍。）',
+        '从「今天又是最后一名」，\n到「接了三根，还是不够」。',
+        '四十页，没有一句骂人的话。',
+        '他只是一直在量 ——\n量自己差多少，\n量自己离他们有多远。',
+        '最后几页的笔画很轻，\n像是握不住笔了。',
+        '（日记到这儿断了。\n后面的纸，应该在更远的地方。）',
+      );
+    } else {
+      lines.push(`（还差 ${TOTAL_FRAGS - GS.frags.length} 页。\n补齐了就能从头读通。）`);
+    }
+    this.dialog.say(lines, () => this.readDiary());
+  }
+
+  // 一页一页翻：保留页码和捡到的地方，方便对照还差哪几页
+  diaryPages() {
     const sorted = GS.frags.slice().sort((a, b) => a - b);
     const lines = ['这是一本日记，字迹很小心。'];
     let lastCh = -1;
@@ -1165,13 +1225,10 @@ class World extends Phaser.Scene {
       const f = fragText(n);
       if (f) lines.push(f.text);
     });
-    const total = TOTAL_FRAGS;
-    if (GS.frags.length < total) {
-      lines.push(`已拼出 ${GS.frags.length}/${total} 页。\n断掉的地方，读不下去。`);
-    } else {
-      lines.push('整本都拼齐了。');
-    }
-    this.dialog.say(lines, () => this.handbook());
+    lines.push(GS.frags.length < TOTAL_FRAGS
+      ? `已拼出 ${GS.frags.length}/${TOTAL_FRAGS} 页。`
+      : `全部 ${TOTAL_FRAGS} 页都在这儿了。`);
+    this.dialog.say(lines, () => this.readDiary());
   }
 
   showDex() {

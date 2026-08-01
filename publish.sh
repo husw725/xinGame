@@ -47,6 +47,9 @@ echo "✓ 通过"
 echo "--- 传送阵交互校验 ---"
 node portal_check.js > /dev/null || { echo "✗ portal_check.js 未通过：传送阵会卡死或丢进度"; exit 1; }
 echo "✓ 通过"
+echo "--- 记忆碎片可收集性校验 ---"
+node frag_check.js > /dev/null || { echo "✗ frag_check.js 未通过：有章节的日记页拿不到"; node frag_check.js | grep "✗" | head -3; exit 1; }
+echo "✓ 通过"
 echo "--- 学科覆盖校验（每章都要有语文题）---"
 for i in 1 2 3 4 5; do   # 题目是随机生成的，跑 5 遍才抓得到偶发
   node subject_check.js > /dev/null || { echo "✗ subject_check.js 未通过（第 $i 遍）"; node subject_check.js | grep "✗" | head -3; exit 1; }

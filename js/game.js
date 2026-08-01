@@ -432,6 +432,9 @@ class World extends Phaser.Scene {
     this.frags = {};     // "x,y" -> 碎片编号
     this.hidden = {};    // "x,y" -> 碎片编号（需放大镜）
     let chestN = 0, fragN = 0, hidN = 0;
+    // 碎片编号由 fragSlots 统一分配 —— 以前 'h' 写死成 5+n，
+    // 隐藏点多于 3 个就溢出到下一章，本章永远凑不齐 8 张
+    const SLOTS = fragSlots(CHAPTER);
 
     const IN_TEX = { W:'t_iwall', F:'t_floor', D:'t_exit', u:'t_cabinet', t:'t_table', p:'t_plant', B:'t_bed', N:'t_floor' };
     for (let y = 0; y < this.gh; y++) {
@@ -471,7 +474,7 @@ class World extends Phaser.Scene {
           this.chests[key + '_spr'] = spr;
           if (!opened) this.blocked.add(key);   // 未开的箱子挡路，撞它=开箱
         } else if (ch === 'p') {
-          const n = fragGlobal(GS.chapter, fragN++);
+          const n = fragGlobal(GS.chapter, SLOTS.p[fragN++]);
           if (!GS.frags.includes(n)) {
             this.frags[key] = n;
             const spr = this.add.image(x * TILE + 16, y * TILE + 16, 'frag').setScale(2).setDepth(4);
@@ -479,7 +482,7 @@ class World extends Phaser.Scene {
             this.frags[key + '_spr'] = spr;
           }
         } else if (ch === 'h') {
-          const n = fragGlobal(GS.chapter, 5 + hidN++);   // 隐藏处放的是本章第6~8页
+          const n = fragGlobal(GS.chapter, SLOTS.h[hidN++]);   // 隐藏处：需要工具才看得见
           if (!GS.frags.includes(n)) {
             this.hidden[key] = n;
             if (GS.tools.includes(CHAPTER.hiddenTool)) {   // 有对应工具才看得见

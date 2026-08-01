@@ -904,7 +904,7 @@ function _ch3map() {
   // --- 内容分布 ---
   put(5,  18, 'c');  put(19, 19, 'p');      // 一层：宝箱 + 碎片
   put(4,  25, 'h');  put(20, 26, 'c');      // 二层
-  put(6,  32, 'p');  put(18, 33, 'h');      // 三层
+  put(6,  32, 'c');  put(18, 33, 'h');      // 三层（这里改成宝箱，碎片编号才够分）
   put(5,  39, 'c');  put(20, 40, 'h');      // 四层
   put(7,  46, 'p');  put(19, 47, 'h');      // 五层
   put(12, 53, 'D');                          // 六层：钟面机关入口
@@ -1170,7 +1170,7 @@ const CH2_CANDY = [
   { name:'第二间 · 分不完怎么办', total:14, plates:4, hint:'14 颗分 4 盘，每盘 3 颗，剩下的 2 颗放不进去 —— 那就是余数。',
     reward:{ kind:'gold', val:260 } },
   { name:'第三间 · 想清楚再放', total:23, plates:5, hint:'先想每盘能放几颗，再想会剩几颗。23 ÷ 5 = 4 …… 3',
-    reward:{ kind:'frag', idx:3 } },
+    reward:{ kind:'gold', val:500 } },
 ];
 
 // ================= 第三章数据 =================
@@ -1437,7 +1437,7 @@ const CH4_BALANCE = [
   { name:'第二间 · 千克换克', target:1200, weights:[1000, 500, 200, 100],
     riddle:'左盘：一袋 1 千克 200 克的矿。',
     hint:'1 千克 = 1000 克，\n所以要 1000 + 200 = 1200 克。',
-    reward:{ kind:'gold', val:600 } },
+    reward:{ kind:'frag', idx:2 } },
   { name:'第三间 · 想清楚再放', target:1850, weights:[1000, 500, 200, 100, 50],
     riddle:'左盘：一袋 1 千克 850 克的矿。',
     hint:'1850 = 1000 + 500 + 200 + 100 + 50。\n五块全用上。',
@@ -1571,7 +1571,7 @@ const CH5_BRIDGE = [
     boards:[{ label:'2米', cm:200 }, { label:'150厘米', cm:150 }, { label:'8分米', cm:80 }, { label:'1米20厘米', cm:120 }],
     riddle:'石刻：「从矮到高，一块也不许错。」',
     hint:'全换成厘米：80、120、150、200。\n顺序是 8分米 → 1米20厘米 → 150厘米 → 2米。',
-    reward:{ kind:'gold', val:900 } },
+    reward:{ kind:'frag', idx:2 } },
   { name:'第三间 · 差一点也不行', unit:'厘米',
     boards:[{ label:'1米05厘米', cm:105 }, { label:'95厘米', cm:95 }, { label:'1米', cm:100 },
             { label:'1米15厘米', cm:115 }, { label:'9分米', cm:90 }],
@@ -1716,6 +1716,28 @@ function loadChapter(i) {
 }
 // 碎片是全局编号（第c章第i页 = c*8+i），日记要跨章累积才拼得出真相
 function fragGlobal(chapterIdx, local) { return chapterIdx * 8 + local; }
+
+// 碎片编号分配：宝箱和谜题奖励用写死的 idx，剩下的编号按地图顺序发给
+// 地上的 'p' 和隐藏的 'h'。
+// 早先 'h' 的编号写死成 5+n：第2章有 4 个隐藏点，第 4 个算出 8，
+// 而 fragGlobal(1,8)=16 正好是第3章的第0页 —— 第2章永远凑不齐 8 张，
+// 还会把第3章的计数搞乱。第4、5章则反过来，编号 2 没人发，也永远差一页。
+function fragSlots(c) {
+  const used = new Set();
+  (c.chests || []).forEach(t => { if (t.kind === 'frag') used.add(t.idx); });
+  ((c.puzzle && c.puzzle.rooms) || []).forEach(r => {
+    if (r.reward && r.reward.kind === 'frag') used.add(r.reward.idx);
+  });
+  const free = [];
+  for (let i = 0; i < 8; i++) if (!used.has(i)) free.push(i);
+  let np = 0, nh = 0;
+  for (let y = 0; y < c.map.length; y++) for (let x = 0; x < c.map[y].length; x++) {
+    if (c.map[y][x] === 'p') np++;
+    if (c.map[y][x] === 'h') nh++;
+  }
+  // 地上的先发，隐藏的后发（隐藏的要工具，本来就是后期内容）
+  return { p: free.slice(0, np), h: free.slice(np, np + nh), free, np, nh };
+}
 function fragText(g) {
   const c = CHAPTERS[Math.floor(g / 8)];
   return c ? c.frags[g % 8] : null;
@@ -1731,7 +1753,7 @@ if (typeof module !== 'undefined') {
   module.exports = { ENEMIES, GEAR, SLOTS, SPELLS, spellsAt,
                      TOTAL_FRAGS, HOUSE_BLOCK, SEARCH_LOOT, rollLoot, BLOCK_CHARS, QSUBJ,
                      CHAPTERS, loadChapter, CH2_CANDY, CH2_RIDDLE, CH3_CLOCK, CH3_CLOCKLOCK, CH4_BALANCE, CH4_WEIGHLOCK, CH5_BRIDGE, CH5_ORDERLOCK,
-                     fragGlobal, fragText, fragsOfChapter,
+                     fragGlobal, fragSlots, fragText, fragsOfChapter,
                      getQuestion, multQ, addsubQ, chineseQ, balanceQ, divideQ, remainderQ, liangciQ, numCN, CN };
   // 下面这些会被 loadChapter 整个换掉，所以必须导出成 getter。
   // 直接写进对象字面量的话导出的是加载那一刻的值 —— node 校验脚本里
